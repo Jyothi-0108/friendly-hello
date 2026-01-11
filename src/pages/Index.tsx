@@ -1,18 +1,49 @@
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Music, LogOut } from 'lucide-react';
+import { Music, LogOut, RotateCcw } from 'lucide-react';
+import WebcamCapture from '@/components/WebcamCapture';
+import EmotionDisplay from '@/components/EmotionDisplay';
+import SongRecommendations from '@/components/SongRecommendations';
+import { useEmotionDetection } from '@/hooks/useEmotionDetection';
+import { useSpotifyRecommendations } from '@/hooks/useSpotifyRecommendations';
 
 const Index = () => {
   const { user, loading, signOut } = useAuth();
   const navigate = useNavigate();
+  
+  const { 
+    detectEmotion, 
+    isProcessing, 
+    emotionResult, 
+    reset: resetEmotion 
+  } = useEmotionDetection();
+  
+  const { 
+    getRecommendations, 
+    isLoading: isLoadingRecommendations, 
+    recommendations, 
+    reset: resetRecommendations 
+  } = useSpotifyRecommendations();
 
   useEffect(() => {
     if (!loading && !user) {
       navigate('/auth');
     }
   }, [user, loading, navigate]);
+
+  const handleCapture = useCallback(async (imageBase64: string) => {
+    const result = await detectEmotion(imageBase64);
+    if (result?.dominantEmotion) {
+      await getRecommendations(result.dominantEmotion);
+    }
+  }, [detectEmotion, getRecommendations]);
+
+  const handleReset = useCallback(() => {
+    resetEmotion();
+    resetRecommendations();
+  }, [resetEmotion, resetRecommendations]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -39,16 +70,16 @@ const Index = () => {
       <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/20 rounded-full blur-3xl" />
 
       {/* Header */}
-      <header className="relative z-10 flex items-center justify-between p-6">
+      <header className="relative z-10 flex items-center justify-between p-4 md:p-6">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-full gradient-primary flex items-center justify-center shadow-lg shadow-primary/30">
-            <Music className="w-6 h-6 text-primary-foreground" />
+          <div className="w-10 h-10 md:w-12 md:h-12 rounded-full gradient-primary flex items-center justify-center shadow-lg shadow-primary/30">
+            <Music className="w-5 h-5 md:w-6 md:h-6 text-primary-foreground" />
           </div>
-          <h1 className="text-2xl font-bold text-gradient">Feel the Beat</h1>
+          <h1 className="text-xl md:text-2xl font-bold text-gradient">Feel the Beat</h1>
         </div>
         
-        <div className="flex items-center gap-4">
-          <span className="text-muted-foreground text-sm">
+        <div className="flex items-center gap-2 md:gap-4">
+          <span className="text-muted-foreground text-xs md:text-sm hidden sm:inline">
             {user.email}
           </span>
           <Button
@@ -58,41 +89,68 @@ const Index = () => {
             className="gap-2"
           >
             <LogOut className="w-4 h-4" />
-            Sign Out
+            <span className="hidden sm:inline">Sign Out</span>
           </Button>
         </div>
       </header>
 
       {/* Main content */}
-      <main className="relative z-10 flex flex-col items-center justify-center min-h-[80vh] text-center px-4">
-        <div className="max-w-2xl space-y-6">
-          <h2 className="text-4xl md:text-5xl font-bold">
-            Welcome to{' '}
-            <span className="text-gradient">Feel the Beat</span>
+      <main className="relative z-10 flex flex-col items-center py-6 md:py-10 px-4 gap-8">
+        {/* Title section */}
+        <div className="text-center max-w-2xl">
+          <h2 className="text-3xl md:text-4xl font-bold mb-3">
+            {emotionResult ? (
+              <>Your Mood: <span className="text-gradient capitalize">{emotionResult.dominantEmotion}</span></>
+            ) : (
+              <>Detect Your <span className="text-gradient">Emotion</span></>
+            )}
           </h2>
-          <p className="text-xl text-muted-foreground">
-            Your emotion-powered music companion. We'll detect your mood through webcam, voice, or text and recommend the perfect songs to uplift your spirits.
+          <p className="text-muted-foreground">
+            {emotionResult 
+              ? "Here are personalized song recommendations based on your detected emotion"
+              : "Let us analyze your expression and recommend the perfect music for your mood"
+            }
           </p>
-          
-          <div className="flex flex-wrap justify-center gap-4 pt-6">
-            <div className="px-6 py-4 rounded-xl bg-card/50 border border-border/50 backdrop-blur">
-              <div className="text-3xl mb-2">📷</div>
-              <p className="text-sm text-muted-foreground">Webcam Detection</p>
-            </div>
-            <div className="px-6 py-4 rounded-xl bg-card/50 border border-border/50 backdrop-blur">
-              <div className="text-3xl mb-2">🎤</div>
-              <p className="text-sm text-muted-foreground">Voice Analysis</p>
-            </div>
-            <div className="px-6 py-4 rounded-xl bg-card/50 border border-border/50 backdrop-blur">
-              <div className="text-3xl mb-2">💬</div>
-              <p className="text-sm text-muted-foreground">Text Sentiment</p>
-            </div>
-            <div className="px-6 py-4 rounded-xl bg-card/50 border border-border/50 backdrop-blur">
-              <div className="text-3xl mb-2">🎵</div>
-              <p className="text-sm text-muted-foreground">Spotify Integration</p>
-            </div>
-          </div>
         </div>
+
+        {/* Webcam and Emotion Detection */}
+        <div className="flex flex-col lg:flex-row gap-8 items-center lg:items-start w-full max-w-5xl">
+          <div className="flex flex-col items-center gap-4">
+            <WebcamCapture 
+              onCapture={handleCapture} 
+              isProcessing={isProcessing} 
+            />
+            
+            {emotionResult && (
+              <Button 
+                variant="outline" 
+                onClick={handleReset}
+                className="gap-2"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Detect Again
+              </Button>
+            )}
+          </div>
+
+          {/* Emotion Display */}
+          {emotionResult && (
+            <EmotionDisplay
+              dominantEmotion={emotionResult.dominantEmotion}
+              confidence={emotionResult.confidence}
+              allEmotions={emotionResult.emotions}
+            />
+          )}
+        </div>
+
+        {/* Song Recommendations */}
+        {(isLoadingRecommendations || recommendations) && (
+          <SongRecommendations
+            tracks={recommendations?.tracks || []}
+            emotion={recommendations?.emotion || emotionResult?.dominantEmotion || ''}
+            isLoading={isLoadingRecommendations}
+          />
+        )}
       </main>
     </div>
   );
