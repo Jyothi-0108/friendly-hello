@@ -22,6 +22,7 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        await videoRef.current.play();
         setIsStreaming(true);
       }
     } catch (err) {
