@@ -16,14 +16,33 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
   const startCamera = useCallback(async () => {
     try {
       setError(null);
+
+      if (!window.isSecureContext) {
+        setError('Camera requires a secure (HTTPS) connection.');
+        return;
+      }
+
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError('Camera is not supported in this browser.');
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user', width: 640, height: 480 },
       });
-      
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+
+      const videoEl = videoRef.current;
+      if (videoEl) {
+        videoEl.srcObject = stream;
+        // Mark streaming immediately so the <video> renders.
         setIsStreaming(true);
+
+        // Some browsers need metadata before play works.
+        videoEl.onloadedmetadata = () => {
+          videoEl.play().catch(() => {
+            // If autoplay is blocked, user will still see the video frame once it loads.
+          });
+        };
       }
     } catch (err) {
       console.error('Error accessing camera:', err);
@@ -36,6 +55,7 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
       const stream = videoRef.current.srcObject as MediaStream;
       stream.getTracks().forEach(track => track.stop());
       videoRef.current.srcObject = null;
+      videoRef.current.onloadedmetadata = null;
       setIsStreaming(false);
     }
   }, []);
