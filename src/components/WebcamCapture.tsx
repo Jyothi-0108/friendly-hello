@@ -1,5 +1,12 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Camera, CameraOff, RefreshCw } from 'lucide-react';
 
 interface WebcamCaptureProps {
@@ -7,11 +14,43 @@ interface WebcamCaptureProps {
   isProcessing: boolean;
 }
 
+interface VideoDevice {
+  deviceId: string;
+  label: string;
+}
+
 const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [devices, setDevices] = useState<VideoDevice[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+
+  // Enumerate available video devices
+  const enumerateDevices = useCallback(async () => {
+    try {
+      // Request permission first so labels are exposed
+      await navigator.mediaDevices.getUserMedia({ video: true });
+      const allDevices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = allDevices
+        .filter((d) => d.kind === 'videoinput')
+        .map((d, idx) => ({
+          deviceId: d.deviceId,
+          label: d.label || `Camera ${idx + 1}`,
+        }));
+      setDevices(videoInputs);
+      if (videoInputs.length > 0 && !selectedDeviceId) {
+        setSelectedDeviceId(videoInputs[0].deviceId);
+      }
+    } catch (err) {
+      console.error('Could not enumerate devices', err);
+    }
+  }, [selectedDeviceId]);
+
+  useEffect(() => {
+    enumerateDevices();
+  }, [enumerateDevices]);
 
   const startCamera = useCallback(async () => {
     try {
@@ -27,33 +66,39 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
         return;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: 640, height: 480 },
-      });
+      // Stop any existing stream before starting a new one
+      if (videoRef.current?.srcObject) {
+        const oldStream = videoRef.current.srcObject as MediaStream;
+        oldStream.getTracks().forEach((track) => track.stop());
+      }
+
+      const constraints: MediaStreamConstraints = {
+        video: selectedDeviceId
+          ? { deviceId: { exact: selectedDeviceId }, width: 640, height: 480 }
+          : { facingMode: 'user', width: 640, height: 480 },
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
 
       const videoEl = videoRef.current;
       if (videoEl) {
         videoEl.srcObject = stream;
-        // Mark streaming immediately so the <video> renders.
         setIsStreaming(true);
 
-        // Some browsers need metadata before play works.
         videoEl.onloadedmetadata = () => {
-          videoEl.play().catch(() => {
-            // If autoplay is blocked, user will still see the video frame once it loads.
-          });
+          videoEl.play().catch(() => {});
         };
       }
     } catch (err) {
       console.error('Error accessing camera:', err);
       setError('Unable to access camera. Please ensure you have granted camera permissions.');
     }
-  }, []);
+  }, [selectedDeviceId]);
 
   const stopCamera = useCallback(() => {
     if (videoRef.current?.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
+      stream.getTracks().forEach((track) => track.stop());
       videoRef.current.srcObject = null;
       videoRef.current.onloadedmetadata = null;
       setIsStreaming(false);
@@ -77,6 +122,18 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
     onCapture(imageBase64);
   }, [onCapture]);
 
+  // Switch camera while streaming
+  const handleDeviceChange = useCallback(
+    (deviceId: string) => {
+      setSelectedDeviceId(deviceId);
+      if (isStreaming) {
+        // Restart stream with new device
+        startCamera();
+      }
+    },
+    [isStreaming, startCamera]
+  );
+
   useEffect(() => {
     return () => {
       stopCamera();
@@ -85,6 +142,24 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
 
   return (
     <div className="flex flex-col items-center gap-4">
+      {/* Camera selector */}
+      {devices.length > 1 && (
+        <div className="w-full max-w-md">
+          <Select value={selectedDeviceId} onValueChange={handleDeviceChange}>
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select camera" />
+            </SelectTrigger>
+            <SelectContent>
+              {devices.map((device) => (
+                <SelectItem key={device.deviceId} value={device.deviceId}>
+                  {device.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       <div className="relative w-full max-w-md aspect-[4/3] rounded-2xl overflow-hidden bg-card border border-border shadow-lg">
         {isStreaming ? (
           <video
@@ -102,7 +177,7 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
             </p>
           </div>
         )}
-        
+
         {isProcessing && (
           <div className="absolute inset-0 bg-background/80 flex items-center justify-center">
             <div className="flex flex-col items-center gap-3">
@@ -123,16 +198,16 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
           </Button>
         ) : (
           <>
-            <Button 
-              onClick={captureImage} 
+            <Button
+              onClick={captureImage}
               disabled={isProcessing}
               className="gap-2 gradient-primary"
             >
               <Camera className="w-4 h-4" />
               Detect Emotion
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={stopCamera}
               disabled={isProcessing}
               className="gap-2"
