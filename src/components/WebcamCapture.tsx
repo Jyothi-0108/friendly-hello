@@ -26,7 +26,7 @@ const AUTO_DETECT_INTERVAL = 5000; // 5 seconds between detections
 const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [devices, setDevices] = useState<VideoDevice[]>([]);
@@ -37,9 +37,14 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
 
   // Enumerate available video devices
   const enumerateDevices = useCallback(async () => {
+    let permissionStream: MediaStream | null = null;
+
     try {
-      // Request permission first so labels are exposed
-      await navigator.mediaDevices.getUserMedia({ video: true });
+      if (!navigator.mediaDevices?.getUserMedia || !navigator.mediaDevices?.enumerateDevices) return;
+
+      // Request permission first so labels are exposed, then immediately stop that temp stream.
+      permissionStream = await navigator.mediaDevices.getUserMedia({ video: true });
+
       const allDevices = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = allDevices
         .filter((d) => d.kind === 'videoinput')
@@ -47,12 +52,15 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
           deviceId: d.deviceId,
           label: d.label || `Camera ${idx + 1}`,
         }));
+
       setDevices(videoInputs);
       if (videoInputs.length > 0 && !selectedDeviceId) {
         setSelectedDeviceId(videoInputs[0].deviceId);
       }
     } catch (err) {
       console.error('Could not enumerate devices', err);
+    } finally {
+      permissionStream?.getTracks().forEach((t) => t.stop());
     }
   }, [selectedDeviceId]);
 
@@ -60,48 +68,65 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
     enumerateDevices();
   }, [enumerateDevices]);
 
-  const startCamera = useCallback(async () => {
-    try {
-      setError(null);
+  const startCamera = useCallback(
+    async (overrideDeviceId?: string) => {
+      try {
+        setError(null);
 
-      if (!window.isSecureContext) {
-        setError('Camera requires a secure (HTTPS) connection.');
-        return;
-      }
+        if (!window.isSecureContext) {
+          setError('Camera requires a secure (HTTPS) connection.');
+          return;
+        }
 
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setError('Camera is not supported in this browser.');
-        return;
-      }
+        if (!navigator.mediaDevices?.getUserMedia) {
+          setError('Camera is not supported in this browser.');
+          return;
+        }
 
-      // Stop any existing stream before starting a new one
-      if (videoRef.current?.srcObject) {
-        const oldStream = videoRef.current.srcObject as MediaStream;
-        oldStream.getTracks().forEach((track) => track.stop());
-      }
+        // Stop any existing stream before starting a new one
+        if (videoRef.current?.srcObject) {
+          const oldStream = videoRef.current.srcObject as MediaStream;
+          oldStream.getTracks().forEach((track) => track.stop());
+          videoRef.current.srcObject = null;
+        }
 
-      const constraints: MediaStreamConstraints = {
-        video: selectedDeviceId
-          ? { deviceId: { exact: selectedDeviceId }, width: 640, height: 480 }
-          : { facingMode: 'user', width: 640, height: 480 },
-      };
+        const deviceIdToUse = overrideDeviceId ?? selectedDeviceId;
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-      const videoEl = videoRef.current;
-      if (videoEl) {
-        videoEl.srcObject = stream;
-        setIsStreaming(true);
-
-        videoEl.onloadedmetadata = () => {
-          videoEl.play().catch(() => {});
+        const constraints: MediaStreamConstraints = {
+          video: deviceIdToUse
+            ? { deviceId: { exact: deviceIdToUse }, width: 640, height: 480 }
+            : { facingMode: 'user', width: 640, height: 480 },
         };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+        const videoEl = videoRef.current;
+        if (videoEl) {
+          videoEl.srcObject = stream;
+          setIsStreaming(true);
+
+          videoEl.onloadedmetadata = () => {
+            videoEl.play().catch(() => {});
+          };
+        }
+      } catch (err: any) {
+        console.error('Error accessing camera:', err);
+        const name = err?.name as string | undefined;
+        if (name === 'NotAllowedError') {
+          setError('Camera permission denied. Please allow camera access in your browser settings.');
+        } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+          setError('No camera device found. Please connect a camera and try again.');
+        } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+          setError('Camera is already in use by another app (Zoom/Meet). Close it and try again.');
+        } else if (name === 'OverconstrainedError') {
+          setError('Selected camera is unavailable. Please choose a different camera.');
+        } else {
+          setError('Unable to access camera. Please ensure you have granted camera permissions.');
+        }
       }
-    } catch (err) {
-      console.error('Error accessing camera:', err);
-      setError('Unable to access camera. Please ensure you have granted camera permissions.');
-    }
-  }, [selectedDeviceId]);
+    },
+    [selectedDeviceId]
+  );
 
   const stopCamera = useCallback(() => {
     if (videoRef.current?.srcObject) {
@@ -135,8 +160,8 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
     (deviceId: string) => {
       setSelectedDeviceId(deviceId);
       if (isStreaming) {
-        // Restart stream with new device
-        startCamera();
+        // Restart stream with the newly selected camera
+        startCamera(deviceId);
       }
     },
     [isStreaming, startCamera]
@@ -221,7 +246,8 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
               autoPlay
               playsInline
               muted
-              className={`w-full h-full object-cover ${isMirrored ? 'scale-x-[-1]' : ''}`}
+              className="w-full h-full object-cover"
+              style={isMirrored ? { transform: 'scaleX(-1)' } : undefined}
             />
             {/* Mirror toggle button */}
             <Button
@@ -287,7 +313,7 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
 
       <div className="flex gap-3">
         {!isStreaming ? (
-          <Button onClick={startCamera} className="gap-2 gradient-primary">
+          <Button onClick={() => startCamera()} className="gap-2 gradient-primary">
             <Camera className="w-4 h-4" />
             Start Camera
           </Button>
