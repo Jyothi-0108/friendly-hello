@@ -86,6 +86,8 @@ const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false }: Webcam
 
   const startCamera = useCallback(
     async (overrideDeviceId?: string) => {
+      let stream: MediaStream | null = null;
+
       try {
         setError(null);
 
@@ -99,31 +101,77 @@ const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false }: Webcam
           return;
         }
 
+        // Stop any existing stream first
         if (videoRef.current?.srcObject) {
           const oldStream = videoRef.current.srcObject as MediaStream;
           oldStream.getTracks().forEach((track) => track.stop());
           videoRef.current.srcObject = null;
         }
 
-        const deviceIdToUse = overrideDeviceId ?? selectedDeviceId;
-
-        const constraints: MediaStreamConstraints = {
-          video: deviceIdToUse
-            ? { deviceId: { exact: deviceIdToUse }, width: 640, height: 480 }
-            : { facingMode: 'user', width: 640, height: 480 },
-        };
-
-        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        setIsStreaming(false);
 
         const videoEl = videoRef.current;
-        if (videoEl) {
-          videoEl.srcObject = stream;
-          setIsStreaming(true);
-
-          videoEl.onloadedmetadata = () => {
-            videoEl.play().catch(() => {});
-          };
+        if (!videoEl) {
+          setError('Camera element is not ready. Please refresh and try again.');
+          return;
         }
+
+        const deviceIdToUse = overrideDeviceId ?? selectedDeviceId;
+
+        const primaryConstraints: MediaStreamConstraints = {
+          audio: false,
+          video: deviceIdToUse
+            ? {
+                deviceId: { exact: deviceIdToUse },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+              }
+            : {
+                facingMode: { ideal: 'user' },
+                width: { ideal: 1280 },
+                height: { ideal: 720 },
+              },
+        };
+
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(primaryConstraints);
+        } catch (err: any) {
+          // If the selected device is unavailable, fall back to a generic request.
+          const name = err?.name as string | undefined;
+          if (deviceIdToUse && (name === 'OverconstrainedError' || name === 'NotFoundError')) {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          } else {
+            throw err;
+          }
+        }
+
+        videoEl.srcObject = stream;
+        videoEl.onloadedmetadata = () => {
+          videoEl.play().catch(() => {});
+        };
+
+        // Some browsers don't reliably fire onloadedmetadata for srcObject.
+        // Try to start playback immediately as well.
+        videoEl.play().catch(() => {});
+
+        setIsStreaming(true);
+
+        // Detect a "black/empty" video (no frames) and show a helpful error.
+        window.setTimeout(() => {
+          const el = videoRef.current;
+          if (!el) return;
+          if (!el.srcObject) return;
+
+          if (el.videoWidth === 0 || el.videoHeight === 0) {
+            const s = el.srcObject as MediaStream;
+            s.getTracks().forEach((t) => t.stop());
+            el.srcObject = null;
+            setIsStreaming(false);
+            setError(
+              'Camera started, but no video is showing. Try switching cameras, closing other apps (Zoom/Meet), or reloading the page.'
+            );
+          }
+        }, 2500);
       } catch (err: any) {
         console.error('Error accessing camera:', err);
         const name = err?.name as string | undefined;
@@ -138,19 +186,29 @@ const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false }: Webcam
         } else {
           setError('Unable to access camera. Please ensure you have granted camera permissions.');
         }
+
+        // Cleanup any stream that might have partially started
+        stream?.getTracks().forEach((t) => t.stop());
       }
     },
     [selectedDeviceId]
   );
 
   const stopCamera = useCallback(() => {
-    if (videoRef.current?.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
+    const videoEl = videoRef.current;
+
+    if (videoEl?.srcObject) {
+      const stream = videoEl.srcObject as MediaStream;
       stream.getTracks().forEach((track) => track.stop());
-      videoRef.current.srcObject = null;
-      videoRef.current.onloadedmetadata = null;
-      setIsStreaming(false);
     }
+
+    if (videoEl) {
+      videoEl.srcObject = null;
+      videoEl.onloadedmetadata = null;
+    }
+
+    setIsStreaming(false);
+
     if (isFullscreen) {
       setIsFullscreen(false);
     }
@@ -257,11 +315,11 @@ const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false }: Webcam
   }, [faceDetected]);
 
   const videoContainerClasses = isFullscreen
-    ? 'fixed inset-0 z-50 bg-black flex items-center justify-center'
+    ? 'fixed inset-0 z-50 bg-background flex items-center justify-center'
     : 'relative w-full max-w-md aspect-[4/3] rounded-2xl overflow-hidden bg-card border border-border shadow-lg';
 
   const videoClasses = isFullscreen
-    ? 'max-w-full max-h-full object-contain'
+    ? 'w-full h-full object-contain'
     : 'w-full h-full object-cover';
 
   return (
@@ -285,28 +343,37 @@ const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false }: Webcam
       )}
 
       <div className={videoContainerClasses}>
-        {isStreaming ? (
-          <>
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className={videoClasses}
-              style={isMirrored ? { transform: 'scaleX(-1)' } : undefined}
-            />
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          className={`${videoClasses} transition-opacity duration-200 ${isStreaming ? 'opacity-100' : 'opacity-0'}`}
+          style={isMirrored ? { transform: 'scaleX(-1)' } : undefined}
+        />
 
+        {!isStreaming && (
+          <div className="absolute inset-0 w-full h-full flex flex-col items-center justify-center gap-4 bg-muted/50">
+            <Camera className="w-16 h-16 text-muted-foreground" />
+            <p className="text-muted-foreground text-center px-4">
+              {error || 'Click "Start Camera" to begin emotion detection'}
+            </p>
+          </div>
+        )}
+
+        {isStreaming && (
+          <>
             {/* Face guide overlay */}
             {showGuidance && !isProcessing && (
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
                 {/* Oval face guide */}
-                <div 
+                <div
                   className={`border-2 border-dashed rounded-[50%] transition-colors duration-300 ${
-                    faceDetected ? 'border-green-500' : 'border-primary/60'
+                    faceDetected ? 'border-secondary/80' : 'border-primary/60'
                   }`}
-                  style={{ 
-                    width: isFullscreen ? '200px' : '140px', 
-                    height: isFullscreen ? '260px' : '180px' 
+                  style={{
+                    width: isFullscreen ? '200px' : '140px',
+                    height: isFullscreen ? '260px' : '180px',
                   }}
                 />
               </div>
@@ -314,7 +381,7 @@ const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false }: Webcam
 
             {/* Face detected indicator */}
             {faceDetected && (
-              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-green-500/90 text-white px-4 py-2 rounded-full text-sm font-medium backdrop-blur-sm flex items-center gap-2">
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-secondary/90 text-secondary-foreground px-4 py-2 rounded-full text-sm font-medium backdrop-blur-sm flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4" />
                 Face Detected
               </div>
@@ -347,7 +414,9 @@ const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false }: Webcam
                 className="bg-background/70 hover:bg-background/90 backdrop-blur-sm"
                 title={isMirrored ? 'Disable mirror' : 'Enable mirror'}
               >
-                <FlipHorizontal className={`w-4 h-4 ${isMirrored ? 'text-primary' : 'text-muted-foreground'}`} />
+                <FlipHorizontal
+                  className={`w-4 h-4 ${isMirrored ? 'text-primary' : 'text-muted-foreground'}`}
+                />
               </Button>
               <Button
                 variant="secondary"
@@ -402,13 +471,6 @@ const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false }: Webcam
               </div>
             )}
           </>
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-muted/50">
-            <Camera className="w-16 h-16 text-muted-foreground" />
-            <p className="text-muted-foreground text-center px-4">
-              {error || 'Click "Start Camera" to begin emotion detection'}
-            </p>
-          </div>
         )}
 
         {isProcessing && (
