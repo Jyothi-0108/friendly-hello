@@ -1,1 +1,7 @@
 project_id = "shjwcjwhokewlxzmahie"
+
+[functions.detect-emotion]
+verify_jwt = false
+
+[functions.get-spotify-recommendations]
+verify_jwt = false
