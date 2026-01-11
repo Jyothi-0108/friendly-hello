@@ -7,7 +7,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Camera, CameraOff, RefreshCw, FlipHorizontal } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Camera, CameraOff, RefreshCw, FlipHorizontal, Play, Pause } from 'lucide-react';
 
 interface WebcamCaptureProps {
   onCapture: (imageBase64: string) => void;
@@ -19,14 +21,19 @@ interface VideoDevice {
   label: string;
 }
 
+const AUTO_DETECT_INTERVAL = 5000; // 5 seconds between detections
+
 const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [devices, setDevices] = useState<VideoDevice[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
-  const [isMirrored, setIsMirrored] = useState(true); // Mirror by default for selfie view
+  const [isMirrored, setIsMirrored] = useState(true);
+  const [isAutoDetect, setIsAutoDetect] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   // Enumerate available video devices
   const enumerateDevices = useCallback(async () => {
@@ -135,9 +142,54 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
     [isStreaming, startCamera]
   );
 
+  // Auto-detect logic
+  useEffect(() => {
+    if (isAutoDetect && isStreaming && !isProcessing) {
+      // Start countdown and interval
+      setCountdown(AUTO_DETECT_INTERVAL / 1000);
+      
+      const countdownInterval = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev === null || prev <= 1) return AUTO_DETECT_INTERVAL / 1000;
+          return prev - 1;
+        });
+      }, 1000);
+
+      intervalRef.current = setInterval(() => {
+        captureImage();
+      }, AUTO_DETECT_INTERVAL);
+
+      return () => {
+        clearInterval(countdownInterval);
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+        setCountdown(null);
+      };
+    } else {
+      // Clear interval when auto-detect is off
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      setCountdown(null);
+    }
+  }, [isAutoDetect, isStreaming, isProcessing, captureImage]);
+
+  // Stop auto-detect when camera stops
+  useEffect(() => {
+    if (!isStreaming) {
+      setIsAutoDetect(false);
+    }
+  }, [isStreaming]);
+
   useEffect(() => {
     return () => {
       stopCamera();
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
     };
   }, [stopCamera]);
 
@@ -181,6 +233,14 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
             >
               <FlipHorizontal className={`w-4 h-4 ${isMirrored ? 'text-primary' : 'text-muted-foreground'}`} />
             </Button>
+
+            {/* Auto-detect countdown indicator */}
+            {isAutoDetect && countdown !== null && (
+              <div className="absolute top-3 left-3 bg-primary/90 text-primary-foreground px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm flex items-center gap-2">
+                <div className="w-2 h-2 bg-primary-foreground rounded-full animate-pulse" />
+                Next scan in {countdown}s
+              </div>
+            )}
           </>
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-muted/50">
@@ -203,6 +263,28 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
 
       <canvas ref={canvasRef} className="hidden" />
 
+      {/* Auto-detect toggle */}
+      {isStreaming && (
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+          <Switch
+            id="auto-detect"
+            checked={isAutoDetect}
+            onCheckedChange={setIsAutoDetect}
+            disabled={isProcessing}
+          />
+          <Label htmlFor="auto-detect" className="flex items-center gap-2 cursor-pointer">
+            {isAutoDetect ? (
+              <Pause className="w-4 h-4 text-primary" />
+            ) : (
+              <Play className="w-4 h-4 text-muted-foreground" />
+            )}
+            <span className="text-sm">
+              {isAutoDetect ? 'Auto-detect ON' : 'Enable auto-detect'}
+            </span>
+          </Label>
+        </div>
+      )}
+
       <div className="flex gap-3">
         {!isStreaming ? (
           <Button onClick={startCamera} className="gap-2 gradient-primary">
@@ -213,7 +295,7 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
           <>
             <Button
               onClick={captureImage}
-              disabled={isProcessing}
+              disabled={isProcessing || isAutoDetect}
               className="gap-2 gradient-primary"
             >
               <Camera className="w-4 h-4" />
