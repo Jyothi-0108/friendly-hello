@@ -9,11 +9,25 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Camera, CameraOff, RefreshCw, FlipHorizontal, Play, Pause } from 'lucide-react';
+import { 
+  Camera, 
+  CameraOff, 
+  RefreshCw, 
+  FlipHorizontal, 
+  Play, 
+  Pause, 
+  Maximize2, 
+  Minimize2,
+  Sun,
+  User,
+  Move,
+  CheckCircle2
+} from 'lucide-react';
 
 interface WebcamCaptureProps {
   onCapture: (imageBase64: string) => void;
   isProcessing: boolean;
+  faceDetected?: boolean;
 }
 
 interface VideoDevice {
@@ -21,11 +35,12 @@ interface VideoDevice {
   label: string;
 }
 
-const AUTO_DETECT_INTERVAL = 5000; // 5 seconds between detections
+const AUTO_DETECT_INTERVAL = 5000;
 
-const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
+const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false }: WebcamCaptureProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +49,8 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
   const [isMirrored, setIsMirrored] = useState(true);
   const [isAutoDetect, setIsAutoDetect] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showGuidance, setShowGuidance] = useState(true);
 
   // Enumerate available video devices
   const enumerateDevices = useCallback(async () => {
@@ -42,7 +59,6 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
     try {
       if (!navigator.mediaDevices?.getUserMedia || !navigator.mediaDevices?.enumerateDevices) return;
 
-      // Request permission first so labels are exposed, then immediately stop that temp stream.
       permissionStream = await navigator.mediaDevices.getUserMedia({ video: true });
 
       const allDevices = await navigator.mediaDevices.enumerateDevices();
@@ -83,7 +99,6 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
           return;
         }
 
-        // Stop any existing stream before starting a new one
         if (videoRef.current?.srcObject) {
           const oldStream = videoRef.current.srcObject as MediaStream;
           oldStream.getTracks().forEach((track) => track.stop());
@@ -136,7 +151,10 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
       videoRef.current.onloadedmetadata = null;
       setIsStreaming(false);
     }
-  }, []);
+    if (isFullscreen) {
+      setIsFullscreen(false);
+    }
+  }, [isFullscreen]);
 
   const captureImage = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return;
@@ -155,24 +173,25 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
     onCapture(imageBase64);
   }, [onCapture]);
 
-  // Switch camera while streaming
   const handleDeviceChange = useCallback(
     (deviceId: string) => {
       setSelectedDeviceId(deviceId);
       if (isStreaming) {
-        // Restart stream with the newly selected camera
         startCamera(deviceId);
       }
     },
     [isStreaming, startCamera]
   );
 
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen((prev) => !prev);
+  }, []);
+
   // Auto-detect logic
   useEffect(() => {
     if (isAutoDetect && isStreaming && !isProcessing) {
-      // Start countdown and interval
       setCountdown(AUTO_DETECT_INTERVAL / 1000);
-      
+
       const countdownInterval = setInterval(() => {
         setCountdown((prev) => {
           if (prev === null || prev <= 1) return AUTO_DETECT_INTERVAL / 1000;
@@ -193,7 +212,6 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
         setCountdown(null);
       };
     } else {
-      // Clear interval when auto-detect is off
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
@@ -202,12 +220,22 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
     }
   }, [isAutoDetect, isStreaming, isProcessing, captureImage]);
 
-  // Stop auto-detect when camera stops
   useEffect(() => {
     if (!isStreaming) {
       setIsAutoDetect(false);
     }
   }, [isStreaming]);
+
+  // Handle ESC key to exit fullscreen
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen]);
 
   useEffect(() => {
     return () => {
@@ -218,10 +246,28 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
     };
   }, [stopCamera]);
 
+  // Hide guidance after face is detected
+  useEffect(() => {
+    if (faceDetected) {
+      const timer = setTimeout(() => setShowGuidance(false), 2000);
+      return () => clearTimeout(timer);
+    } else {
+      setShowGuidance(true);
+    }
+  }, [faceDetected]);
+
+  const videoContainerClasses = isFullscreen
+    ? 'fixed inset-0 z-50 bg-black flex items-center justify-center'
+    : 'relative w-full max-w-md aspect-[4/3] rounded-2xl overflow-hidden bg-card border border-border shadow-lg';
+
+  const videoClasses = isFullscreen
+    ? 'max-w-full max-h-full object-contain'
+    : 'w-full h-full object-cover';
+
   return (
-    <div className="flex flex-col items-center gap-4">
+    <div className="flex flex-col items-center gap-4" ref={containerRef}>
       {/* Camera selector */}
-      {devices.length > 1 && (
+      {devices.length > 1 && !isFullscreen && (
         <div className="w-full max-w-md">
           <Select value={selectedDeviceId} onValueChange={handleDeviceChange}>
             <SelectTrigger className="w-full">
@@ -238,7 +284,7 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
         </div>
       )}
 
-      <div className="relative w-full max-w-md aspect-[4/3] rounded-2xl overflow-hidden bg-card border border-border shadow-lg">
+      <div className={videoContainerClasses}>
         {isStreaming ? (
           <>
             <video
@@ -246,25 +292,113 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
               autoPlay
               playsInline
               muted
-              className="w-full h-full object-cover"
+              className={videoClasses}
               style={isMirrored ? { transform: 'scaleX(-1)' } : undefined}
             />
-            {/* Mirror toggle button */}
-            <Button
-              variant="secondary"
-              size="icon"
-              onClick={() => setIsMirrored(!isMirrored)}
-              className="absolute top-3 right-3 bg-background/70 hover:bg-background/90 backdrop-blur-sm"
-              title={isMirrored ? 'Disable mirror' : 'Enable mirror'}
-            >
-              <FlipHorizontal className={`w-4 h-4 ${isMirrored ? 'text-primary' : 'text-muted-foreground'}`} />
-            </Button>
+
+            {/* Face guide overlay */}
+            {showGuidance && !isProcessing && (
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                {/* Oval face guide */}
+                <div 
+                  className={`border-2 border-dashed rounded-[50%] transition-colors duration-300 ${
+                    faceDetected ? 'border-green-500' : 'border-primary/60'
+                  }`}
+                  style={{ 
+                    width: isFullscreen ? '200px' : '140px', 
+                    height: isFullscreen ? '260px' : '180px' 
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Face detected indicator */}
+            {faceDetected && (
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-green-500/90 text-white px-4 py-2 rounded-full text-sm font-medium backdrop-blur-sm flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4" />
+                Face Detected
+              </div>
+            )}
+
+            {/* Guidance tips */}
+            {showGuidance && !faceDetected && !isProcessing && (
+              <div className="absolute bottom-3 left-3 right-3 flex flex-wrap justify-center gap-2">
+                <div className="bg-background/80 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs flex items-center gap-1.5">
+                  <User className="w-3 h-3 text-primary" />
+                  Center your face
+                </div>
+                <div className="bg-background/80 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs flex items-center gap-1.5">
+                  <Move className="w-3 h-3 text-primary" />
+                  Move closer
+                </div>
+                <div className="bg-background/80 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs flex items-center gap-1.5">
+                  <Sun className="w-3 h-3 text-primary" />
+                  Good lighting
+                </div>
+              </div>
+            )}
+
+            {/* Control buttons overlay */}
+            <div className="absolute top-3 right-3 flex gap-2">
+              <Button
+                variant="secondary"
+                size="icon"
+                onClick={() => setIsMirrored(!isMirrored)}
+                className="bg-background/70 hover:bg-background/90 backdrop-blur-sm"
+                title={isMirrored ? 'Disable mirror' : 'Enable mirror'}
+              >
+                <FlipHorizontal className={`w-4 h-4 ${isMirrored ? 'text-primary' : 'text-muted-foreground'}`} />
+              </Button>
+              <Button
+                variant="secondary"
+                size="icon"
+                onClick={toggleFullscreen}
+                className="bg-background/70 hover:bg-background/90 backdrop-blur-sm"
+                title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+              >
+                {isFullscreen ? (
+                  <Minimize2 className="w-4 h-4 text-primary" />
+                ) : (
+                  <Maximize2 className="w-4 h-4 text-muted-foreground" />
+                )}
+              </Button>
+            </div>
 
             {/* Auto-detect countdown indicator */}
             {isAutoDetect && countdown !== null && (
               <div className="absolute top-3 left-3 bg-primary/90 text-primary-foreground px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm flex items-center gap-2">
                 <div className="w-2 h-2 bg-primary-foreground rounded-full animate-pulse" />
                 Next scan in {countdown}s
+              </div>
+            )}
+
+            {/* Fullscreen exit hint */}
+            {isFullscreen && (
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-background/70 backdrop-blur-sm px-3 py-1 rounded-full text-xs text-muted-foreground">
+                Press ESC to exit fullscreen
+              </div>
+            )}
+
+            {/* Fullscreen controls */}
+            {isFullscreen && (
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-3">
+                <Button
+                  onClick={captureImage}
+                  disabled={isProcessing || isAutoDetect}
+                  className="gap-2 gradient-primary"
+                >
+                  <Camera className="w-4 h-4" />
+                  Detect Emotion
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={stopCamera}
+                  disabled={isProcessing}
+                  className="gap-2 bg-background/70 hover:bg-background/90"
+                >
+                  <CameraOff className="w-4 h-4" />
+                  Stop
+                </Button>
               </div>
             )}
           </>
@@ -290,7 +424,7 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
       <canvas ref={canvasRef} className="hidden" />
 
       {/* Auto-detect toggle */}
-      {isStreaming && (
+      {isStreaming && !isFullscreen && (
         <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
           <Switch
             id="auto-detect"
@@ -311,34 +445,36 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
         </div>
       )}
 
-      <div className="flex gap-3">
-        {!isStreaming ? (
-          <Button onClick={() => startCamera()} className="gap-2 gradient-primary">
-            <Camera className="w-4 h-4" />
-            Start Camera
-          </Button>
-        ) : (
-          <>
-            <Button
-              onClick={captureImage}
-              disabled={isProcessing || isAutoDetect}
-              className="gap-2 gradient-primary"
-            >
+      {!isFullscreen && (
+        <div className="flex gap-3">
+          {!isStreaming ? (
+            <Button onClick={() => startCamera()} className="gap-2 gradient-primary">
               <Camera className="w-4 h-4" />
-              Detect Emotion
+              Start Camera
             </Button>
-            <Button
-              variant="outline"
-              onClick={stopCamera}
-              disabled={isProcessing}
-              className="gap-2"
-            >
-              <CameraOff className="w-4 h-4" />
-              Stop
-            </Button>
-          </>
-        )}
-      </div>
+          ) : (
+            <>
+              <Button
+                onClick={captureImage}
+                disabled={isProcessing || isAutoDetect}
+                className="gap-2 gradient-primary"
+              >
+                <Camera className="w-4 h-4" />
+                Detect Emotion
+              </Button>
+              <Button
+                variant="outline"
+                onClick={stopCamera}
+                disabled={isProcessing}
+                className="gap-2"
+              >
+                <CameraOff className="w-4 h-4" />
+                Stop
+              </Button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 };

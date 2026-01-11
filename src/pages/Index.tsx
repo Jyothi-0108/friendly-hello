@@ -118,7 +118,8 @@ const Index = () => {
           <div className="flex flex-col items-center gap-4">
             <WebcamCapture 
               onCapture={handleCapture} 
-              isProcessing={isProcessing} 
+              isProcessing={isProcessing}
+              faceDetected={!!emotionResult}
             />
             
             {emotionResult && (
