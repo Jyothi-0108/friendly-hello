@@ -7,7 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Camera, CameraOff, RefreshCw } from 'lucide-react';
+import { Camera, CameraOff, RefreshCw, FlipHorizontal } from 'lucide-react';
 
 interface WebcamCaptureProps {
   onCapture: (imageBase64: string) => void;
@@ -26,6 +26,7 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
   const [error, setError] = useState<string | null>(null);
   const [devices, setDevices] = useState<VideoDevice[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
+  const [isMirrored, setIsMirrored] = useState(true); // Mirror by default for selfie view
 
   // Enumerate available video devices
   const enumerateDevices = useCallback(async () => {
@@ -162,13 +163,25 @@ const WebcamCapture = ({ onCapture, isProcessing }: WebcamCaptureProps) => {
 
       <div className="relative w-full max-w-md aspect-[4/3] rounded-2xl overflow-hidden bg-card border border-border shadow-lg">
         {isStreaming ? (
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="w-full h-full object-cover"
-          />
+          <>
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className={`w-full h-full object-cover ${isMirrored ? 'scale-x-[-1]' : ''}`}
+            />
+            {/* Mirror toggle button */}
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={() => setIsMirrored(!isMirrored)}
+              className="absolute top-3 right-3 bg-background/70 hover:bg-background/90 backdrop-blur-sm"
+              title={isMirrored ? 'Disable mirror' : 'Enable mirror'}
+            >
+              <FlipHorizontal className={`w-4 h-4 ${isMirrored ? 'text-primary' : 'text-muted-foreground'}`} />
+            </Button>
+          </>
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-muted/50">
             <Camera className="w-16 h-16 text-muted-foreground" />
