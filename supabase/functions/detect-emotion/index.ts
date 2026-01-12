@@ -32,9 +32,9 @@ serve(async (req) => {
     const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
     const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
 
-    // Call Hugging Face emotion detection model
+    // Call Hugging Face emotion detection model (using a well-maintained model)
     const response = await fetch(
-      "https://api-inference.huggingface.co/models/trpakov/vit-face-expression",
+      "https://api-inference.huggingface.co/models/dima806/facial_emotions_image_detection",
       {
         method: "POST",
         headers: {
