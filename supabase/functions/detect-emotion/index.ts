@@ -20,69 +20,130 @@ serve(async (req) => {
       );
     }
 
-    const HUGGINGFACE_API_KEY = Deno.env.get("HUGGINGFACE_API_KEY");
-    if (!HUGGINGFACE_API_KEY) {
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) {
       return new Response(
-        JSON.stringify({ error: "Hugging Face API key not configured" }),
+        JSON.stringify({ error: "AI is not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Convert base64 to binary
-    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, "");
-    const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+    const dataUrl = imageBase64.startsWith("data:image/")
+      ? imageBase64
+      : `data:image/jpeg;base64,${imageBase64}`;
 
-    // Call Hugging Face emotion detection model (using a well-maintained model)
-    const response = await fetch(
-      "https://api-inference.huggingface.co/models/dima806/facial_emotions_image_detection",
-      {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${HUGGINGFACE_API_KEY}`,
-          "Content-Type": "application/octet-stream",
-        },
-        body: binaryData,
-      }
-    );
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "openai/gpt-5-mini",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are an emotion detection system. Given ONE face photo, infer the person’s dominant facial emotion and estimate confidence. Return ONLY via the provided function tool.",
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text:
+                  "Analyze the facial expression. Provide the dominantEmotion and top emotions (max 5) with confidence integers 0-100.",
+              },
+              { type: "image_url", image_url: { url: dataUrl } },
+            ],
+          },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "return_emotion_result",
+              description: "Return facial emotion classification results.",
+              parameters: {
+                type: "object",
+                additionalProperties: false,
+                required: ["dominantEmotion", "confidence", "emotions"],
+                properties: {
+                  dominantEmotion: { type: "string" },
+                  confidence: { type: "integer", minimum: 0, maximum: 100 },
+                  emotions: {
+                    type: "array",
+                    maxItems: 5,
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      required: ["emotion", "confidence"],
+                      properties: {
+                        emotion: { type: "string" },
+                        confidence: { type: "integer", minimum: 0, maximum: 100 },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        ],
+        tool_choice: { type: "function", function: { name: "return_emotion_result" } },
+      }),
+    });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Hugging Face API error:", response.status, errorText);
-      
-      // Handle model loading
-      if (response.status === 503) {
+      const t = await response.text();
+      console.error("AI gateway error:", response.status, t);
+
+      if (response.status === 429) {
         return new Response(
-          JSON.stringify({ error: "Model is loading, please try again in a few seconds", loading: true }),
-          { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ error: "Too many requests. Please try again in a moment." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      
+
+      if (response.status === 402) {
+        return new Response(
+          JSON.stringify({ error: "AI usage limit reached. Please add credits and try again." }),
+          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       return new Response(
         JSON.stringify({ error: "Failed to detect emotion" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const emotions = await response.json();
-    console.log("Detected emotions:", emotions);
+    const result = await response.json();
+    const args = result?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
 
-    // Format the response - the model returns an array of predictions
-    const formattedEmotions = emotions.map((e: { label: string; score: number }) => ({
-      emotion: e.label,
-      confidence: Math.round(e.score * 100),
-    }));
+    if (!args) {
+      console.error("AI gateway response missing tool_calls:", JSON.stringify(result));
+      return new Response(
+        JSON.stringify({ error: "Failed to detect emotion" }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-    // Get the dominant emotion
-    const dominantEmotion = formattedEmotions[0];
+    const parsed = JSON.parse(args) as {
+      dominantEmotion: string;
+      confidence: number;
+      emotions: Array<{ emotion: string; confidence: number }>;
+    };
 
     return new Response(
-      JSON.stringify({ 
-        emotions: formattedEmotions,
-        dominantEmotion: dominantEmotion.emotion,
-        confidence: dominantEmotion.confidence
+      JSON.stringify({
+        emotions: parsed.emotions,
+        dominantEmotion: parsed.dominantEmotion,
+        confidence: parsed.confidence,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+
+    // Response is returned earlier in the AI classification block.
   } catch (error) {
     console.error("Error in detect-emotion function:", error);
     return new Response(
