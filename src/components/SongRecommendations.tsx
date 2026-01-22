@@ -1,4 +1,4 @@
-import { ExternalLink, Play, Music } from 'lucide-react';
+import { ExternalLink, Play, Pause, Music } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface Track {
@@ -16,6 +16,9 @@ interface SongRecommendationsProps {
   tracks: Track[];
   emotion: string;
   isLoading: boolean;
+  currentTrackId?: string | null;
+  isPlaying?: boolean;
+  onPlayTrack?: (track: Track) => void;
 }
 
 const formatDuration = (ms: number) => {
@@ -24,7 +27,7 @@ const formatDuration = (ms: number) => {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
 
-const SongRecommendations = ({ tracks, emotion, isLoading }: SongRecommendationsProps) => {
+const SongRecommendations = ({ tracks, emotion, isLoading, currentTrackId, isPlaying, onPlayTrack }: SongRecommendationsProps) => {
   if (isLoading) {
     return (
       <div className="w-full max-w-2xl space-y-4">
@@ -92,17 +95,18 @@ const SongRecommendations = ({ tracks, emotion, isLoading }: SongRecommendations
             </div>
 
             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-              {track.previewUrl && (
+              {track.previewUrl && onPlayTrack && (
                 <Button
                   size="icon"
-                  variant="ghost"
+                  variant={currentTrackId === track.id ? "default" : "ghost"}
                   className="h-9 w-9"
-                  onClick={() => {
-                    const audio = new Audio(track.previewUrl!);
-                    audio.play();
-                  }}
+                  onClick={() => onPlayTrack(track)}
                 >
-                  <Play className="w-4 h-4" />
+                  {currentTrackId === track.id && isPlaying ? (
+                    <Pause className="w-4 h-4" />
+                  ) : (
+                    <Play className="w-4 h-4" />
+                  )}
                 </Button>
               )}
               <Button

@@ -6,8 +6,10 @@ import { Music, LogOut, RotateCcw } from 'lucide-react';
 import WebcamCapture from '@/components/WebcamCapture';
 import EmotionDisplay from '@/components/EmotionDisplay';
 import SongRecommendations from '@/components/SongRecommendations';
+import MiniPlayer from '@/components/MiniPlayer';
 import { useEmotionDetection } from '@/hooks/useEmotionDetection';
 import { useSpotifyRecommendations } from '@/hooks/useSpotifyRecommendations';
+import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 
 const Index = () => {
   const { user, loading, signOut } = useAuth();
@@ -27,6 +29,15 @@ const Index = () => {
     reset: resetRecommendations 
   } = useSpotifyRecommendations();
 
+  const {
+    currentTrack,
+    isPlaying,
+    progress,
+    duration,
+    play,
+    stop,
+  } = useAudioPlayer();
+
   useEffect(() => {
     if (!loading && !user) {
       navigate('/auth');
@@ -43,7 +54,18 @@ const Index = () => {
   const handleReset = useCallback(() => {
     resetEmotion();
     resetRecommendations();
-  }, [resetEmotion, resetRecommendations]);
+    stop();
+  }, [resetEmotion, resetRecommendations, stop]);
+
+  const handlePlayTrack = useCallback((track: { id: string; name: string; artists: string; previewUrl: string | null; albumArt: string | null }) => {
+    play(track);
+  }, [play]);
+
+  const handlePlayerPlayPause = useCallback(() => {
+    if (currentTrack) {
+      play(currentTrack);
+    }
+  }, [currentTrack, play]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -150,9 +172,22 @@ const Index = () => {
             tracks={recommendations?.tracks || []}
             emotion={recommendations?.emotion || emotionResult?.dominantEmotion || ''}
             isLoading={isLoadingRecommendations}
+            currentTrackId={currentTrack?.id}
+            isPlaying={isPlaying}
+            onPlayTrack={handlePlayTrack}
           />
         )}
       </main>
+
+      {/* Mini Player */}
+      <MiniPlayer
+        track={currentTrack}
+        isPlaying={isPlaying}
+        progress={progress}
+        duration={duration}
+        onPlayPause={handlePlayerPlayPause}
+        onClose={stop}
+      />
     </div>
   );
 };
