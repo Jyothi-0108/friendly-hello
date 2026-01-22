@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,9 @@ import WebcamCapture from '@/components/WebcamCapture';
 import EmotionDisplay from '@/components/EmotionDisplay';
 import SongRecommendations from '@/components/SongRecommendations';
 import MiniPlayer from '@/components/MiniPlayer';
+import DetectionModeSelector, { DetectionMode } from '@/components/DetectionModeSelector';
+import TextEmotionInput from '@/components/TextEmotionInput';
+import VoiceEmotionInput from '@/components/VoiceEmotionInput';
 import { useEmotionDetection } from '@/hooks/useEmotionDetection';
 import { useSpotifyRecommendations } from '@/hooks/useSpotifyRecommendations';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
@@ -14,9 +17,12 @@ import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 const Index = () => {
   const { user, loading, signOut } = useAuth();
   const navigate = useNavigate();
+  const [detectionMode, setDetectionMode] = useState<DetectionMode>('camera');
   
   const { 
     detectEmotion, 
+    detectTextEmotion,
+    detectVoiceEmotion,
     isProcessing, 
     emotionResult, 
     reset: resetEmotion 
@@ -50,6 +56,20 @@ const Index = () => {
       await getRecommendations(result.dominantEmotion);
     }
   }, [detectEmotion, getRecommendations]);
+
+  const handleTextSubmit = useCallback(async (text: string) => {
+    const result = await detectTextEmotion(text);
+    if (result?.dominantEmotion) {
+      await getRecommendations(result.dominantEmotion);
+    }
+  }, [detectTextEmotion, getRecommendations]);
+
+  const handleVoiceSubmit = useCallback(async (audioBlob: Blob) => {
+    const result = await detectVoiceEmotion(audioBlob);
+    if (result?.dominantEmotion) {
+      await getRecommendations(result.dominantEmotion);
+    }
+  }, [detectVoiceEmotion, getRecommendations]);
 
   const handleReset = useCallback(() => {
     resetEmotion();
@@ -135,14 +155,39 @@ const Index = () => {
           </p>
         </div>
 
-        {/* Webcam and Emotion Detection */}
+        {/* Detection Mode Selector */}
+        <div className="w-full max-w-md">
+          <DetectionModeSelector
+            mode={detectionMode}
+            onModeChange={setDetectionMode}
+            disabled={isProcessing}
+          />
+        </div>
+
+        {/* Detection Input based on mode */}
         <div className="flex flex-col lg:flex-row gap-8 items-center lg:items-start w-full max-w-5xl">
           <div className="flex flex-col items-center gap-4">
-            <WebcamCapture 
-              onCapture={handleCapture} 
-              isProcessing={isProcessing}
-              faceDetected={!!emotionResult}
-            />
+            {detectionMode === 'camera' && (
+              <WebcamCapture 
+                onCapture={handleCapture} 
+                isProcessing={isProcessing}
+                faceDetected={!!emotionResult}
+              />
+            )}
+            
+            {detectionMode === 'text' && (
+              <TextEmotionInput
+                onSubmit={handleTextSubmit}
+                isProcessing={isProcessing}
+              />
+            )}
+            
+            {detectionMode === 'voice' && (
+              <VoiceEmotionInput
+                onSubmit={handleVoiceSubmit}
+                isProcessing={isProcessing}
+              />
+            )}
             
             {emotionResult && (
               <Button 
