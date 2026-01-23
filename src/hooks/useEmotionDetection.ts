@@ -12,17 +12,27 @@ interface EmotionResult {
   dominantEmotion: string;
   confidence: number;
   transcribedText?: string;
+  faceDetected?: boolean;
+  detectionStatus?: string;
+}
+
+interface FaceDetectionError {
+  faceDetected: false;
+  detectionStatus: string;
+  error: string;
 }
 
 export const useEmotionDetection = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [emotionResult, setEmotionResult] = useState<EmotionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [faceDetectionError, setFaceDetectionError] = useState<FaceDetectionError | null>(null);
   const { toast } = useToast();
 
   const detectEmotion = useCallback(async (imageBase64: string) => {
     setIsProcessing(true);
     setError(null);
+    setFaceDetectionError(null);
 
     try {
       const { data, error: fnError } = await supabase.functions.invoke('detect-emotion', {
@@ -30,15 +40,34 @@ export const useEmotionDetection = () => {
       });
 
       if (fnError) throw fnError;
+
+      // Handle face not detected scenarios
+      if (data.faceDetected === false) {
+        const errorData: FaceDetectionError = {
+          faceDetected: false,
+          detectionStatus: data.detectionStatus,
+          error: data.error,
+        };
+        setFaceDetectionError(errorData);
+        
+        // Show appropriate toast based on detection status
+        const titles: Record<string, string> = {
+          no_face: 'No Face Detected',
+          poor_lighting: 'Poor Lighting',
+          partial_face: 'Partial Face',
+          blurry: 'Image Blurry',
+          multiple_faces: 'Multiple Faces',
+        };
+        
+        toast({
+          title: titles[data.detectionStatus] || 'Face Not Detected',
+          description: data.error,
+          variant: 'destructive',
+        });
+        return null;
+      }
+
       if (data.error) {
-        if (data.loading) {
-          toast({
-            title: 'Model Loading',
-            description: 'The AI model is warming up. Please try again in a few seconds.',
-            variant: 'default',
-          });
-          return null;
-        }
         throw new Error(data.error);
       }
 
@@ -131,6 +160,7 @@ export const useEmotionDetection = () => {
   const reset = useCallback(() => {
     setEmotionResult(null);
     setError(null);
+    setFaceDetectionError(null);
   }, []);
 
   return {
@@ -140,6 +170,7 @@ export const useEmotionDetection = () => {
     isProcessing,
     emotionResult,
     error,
+    faceDetectionError,
     reset,
   };
 };

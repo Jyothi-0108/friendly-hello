@@ -24,7 +24,8 @@ const Index = () => {
     detectTextEmotion,
     detectVoiceEmotion,
     isProcessing, 
-    emotionResult, 
+    emotionResult,
+    faceDetectionError,
     reset: resetEmotion 
   } = useEmotionDetection();
   
@@ -172,6 +173,7 @@ const Index = () => {
                 onCapture={handleCapture} 
                 isProcessing={isProcessing}
                 faceDetected={!!emotionResult}
+                faceDetectionError={faceDetectionError}
               />
             )}
             

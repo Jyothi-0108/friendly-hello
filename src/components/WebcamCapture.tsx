@@ -21,13 +21,24 @@ import {
   Sun,
   User,
   Move,
-  CheckCircle2
+  CheckCircle2,
+  AlertTriangle,
+  Eye,
+  Lightbulb,
+  Users
 } from 'lucide-react';
+
+interface FaceDetectionError {
+  faceDetected: false;
+  detectionStatus: string;
+  error: string;
+}
 
 interface WebcamCaptureProps {
   onCapture: (imageBase64: string) => void;
   isProcessing: boolean;
   faceDetected?: boolean;
+  faceDetectionError?: FaceDetectionError | null;
 }
 
 interface VideoDevice {
@@ -37,7 +48,7 @@ interface VideoDevice {
 
 const AUTO_DETECT_INTERVAL = 5000;
 
-const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false }: WebcamCaptureProps) => {
+const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false, faceDetectionError }: WebcamCaptureProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -380,15 +391,29 @@ const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false }: Webcam
             )}
 
             {/* Face detected indicator */}
-            {faceDetected && (
+            {faceDetected && !faceDetectionError && (
               <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-secondary/90 text-secondary-foreground px-4 py-2 rounded-full text-sm font-medium backdrop-blur-sm flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4" />
                 Face Detected
               </div>
             )}
 
+            {/* Face detection error indicator */}
+            {faceDetectionError && !isProcessing && (
+              <div className="absolute bottom-3 left-3 right-3 flex flex-col items-center gap-2">
+                <div className="bg-destructive/90 text-destructive-foreground px-4 py-2 rounded-lg text-sm font-medium backdrop-blur-sm flex items-center gap-2 max-w-xs text-center">
+                  {faceDetectionError.detectionStatus === 'poor_lighting' && <Lightbulb className="w-4 h-4 flex-shrink-0" />}
+                  {faceDetectionError.detectionStatus === 'no_face' && <Eye className="w-4 h-4 flex-shrink-0" />}
+                  {faceDetectionError.detectionStatus === 'partial_face' && <User className="w-4 h-4 flex-shrink-0" />}
+                  {faceDetectionError.detectionStatus === 'blurry' && <AlertTriangle className="w-4 h-4 flex-shrink-0" />}
+                  {faceDetectionError.detectionStatus === 'multiple_faces' && <Users className="w-4 h-4 flex-shrink-0" />}
+                  <span>{faceDetectionError.error}</span>
+                </div>
+              </div>
+            )}
+
             {/* Guidance tips */}
-            {showGuidance && !faceDetected && !isProcessing && (
+            {showGuidance && !faceDetected && !faceDetectionError && !isProcessing && (
               <div className="absolute bottom-3 left-3 right-3 flex flex-wrap justify-center gap-2">
                 <div className="bg-background/80 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs flex items-center gap-1.5">
                   <User className="w-3 h-3 text-primary" />

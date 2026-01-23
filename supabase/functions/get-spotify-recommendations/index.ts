@@ -5,6 +5,97 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Map emotions to Spotify search queries and genres
+const emotionToSearchTerms: Record<string, { keywords: string[]; genres: string[] }> = {
+  happy: {
+    keywords: ["happy", "upbeat", "feel good", "dance", "party"],
+    genres: ["pop", "dance", "happy"],
+  },
+  sad: {
+    keywords: ["sad", "heartbreak", "melancholy", "emotional", "ballad"],
+    genres: ["acoustic", "indie", "sad"],
+  },
+  angry: {
+    keywords: ["angry", "rage", "intense", "heavy", "aggressive"],
+    genres: ["rock", "metal", "punk"],
+  },
+  fear: {
+    keywords: ["dark", "ambient", "atmospheric", "tense", "suspense"],
+    genres: ["ambient", "electronic", "soundtrack"],
+  },
+  surprise: {
+    keywords: ["exciting", "energetic", "unexpected", "dynamic", "vibrant"],
+    genres: ["electronic", "pop", "indie"],
+  },
+  disgust: {
+    keywords: ["alternative", "grunge", "underground", "raw"],
+    genres: ["alternative", "grunge", "punk"],
+  },
+  neutral: {
+    keywords: ["chill", "relaxing", "calm", "peaceful", "ambient"],
+    genres: ["chill", "lo-fi", "ambient"],
+  },
+};
+
+async function getSpotifyAccessToken(clientId: string, clientSecret: string): Promise<string> {
+  const response = await fetch("https://accounts.spotify.com/api/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+    },
+    body: "grant_type=client_credentials",
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    console.error("Spotify auth error:", error);
+    throw new Error("Failed to authenticate with Spotify");
+  }
+
+  const data = await response.json();
+  return data.access_token;
+}
+
+interface SpotifyTrack {
+  id: string;
+  name: string;
+  artists: Array<{ name: string }>;
+  album: {
+    name: string;
+    images: Array<{ url: string; height: number }>;
+  };
+  preview_url: string | null;
+  external_urls: {
+    spotify: string;
+  };
+  duration_ms: number;
+}
+
+async function searchSpotifyTracks(
+  accessToken: string,
+  query: string,
+  limit: number = 10
+): Promise<SpotifyTrack[]> {
+  const response = await fetch(
+    `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=${limit}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.text();
+    console.error("Spotify search error:", error);
+    throw new Error("Failed to search Spotify");
+  }
+
+  const data = await response.json();
+  return data.tracks?.items || [];
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -20,130 +111,69 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
+    const SPOTIFY_CLIENT_ID = Deno.env.get("SPOTIFY_CLIENT_ID");
+    const SPOTIFY_CLIENT_SECRET = Deno.env.get("SPOTIFY_CLIENT_SECRET");
+
+    if (!SPOTIFY_CLIENT_ID || !SPOTIFY_CLIENT_SECRET) {
+      console.error("Spotify credentials not configured");
       return new Response(
-        JSON.stringify({ error: "AI is not configured" }),
+        JSON.stringify({ error: "Spotify is not configured" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a music recommendation engine. Given an emotion, suggest 8 real songs that match that mood. Return ONLY via the provided function tool. Use real artist names and song titles.",
-          },
-          {
-            role: "user",
-            content: `Suggest 8 songs for someone feeling "${emotion}".`,
-          },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "return_song_recommendations",
-              description: "Return song recommendations for a given emotion.",
-              parameters: {
-                type: "object",
-                additionalProperties: false,
-                required: ["tracks", "emotion", "genres"],
-                properties: {
-                  emotion: { type: "string" },
-                  genres: {
-                    type: "array",
-                    items: { type: "string" },
-                    maxItems: 3,
-                  },
-                  tracks: {
-                    type: "array",
-                    maxItems: 8,
-                    items: {
-                      type: "object",
-                      additionalProperties: false,
-                      required: ["id", "name", "artists", "album"],
-                      properties: {
-                        id: { type: "string" },
-                        name: { type: "string" },
-                        artists: { type: "string" },
-                        album: { type: "string" },
-                        albumArt: { type: "string", nullable: true },
-                        previewUrl: { type: "string", nullable: true },
-                        spotifyUrl: { type: "string", nullable: true },
-                        duration: { type: "integer", nullable: true },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "return_song_recommendations" } },
+    // Get Spotify access token
+    const accessToken = await getSpotifyAccessToken(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET);
+
+    // Get search terms for the emotion
+    const emotionLower = emotion.toLowerCase();
+    const searchConfig = emotionToSearchTerms[emotionLower] || emotionToSearchTerms.neutral;
+
+    // Search for tracks using multiple keywords to get variety
+    const allTracks: SpotifyTrack[] = [];
+    const seenIds = new Set<string>();
+
+    for (const keyword of searchConfig.keywords.slice(0, 3)) {
+      try {
+        const query = `${keyword} ${searchConfig.genres[0] || ""}`.trim();
+        const tracks = await searchSpotifyTracks(accessToken, query, 5);
+        
+        for (const track of tracks) {
+          if (!seenIds.has(track.id)) {
+            seenIds.add(track.id);
+            allTracks.push(track);
+          }
+        }
+      } catch (err) {
+        console.error(`Search error for keyword "${keyword}":`, err);
+      }
+    }
+
+    // Shuffle and take top 8 tracks
+    const shuffled = allTracks.sort(() => Math.random() - 0.5);
+    const selectedTracks = shuffled.slice(0, 8);
+
+    // Format tracks for response
+    const formattedTracks = selectedTracks.map((track) => ({
+      id: track.id,
+      name: track.name,
+      artists: track.artists.map((a) => a.name).join(", "),
+      album: track.album.name,
+      albumArt: track.album.images.find((img) => img.height === 300)?.url ||
+                track.album.images[0]?.url || null,
+      previewUrl: track.preview_url,
+      spotifyUrl: track.external_urls.spotify,
+      duration: track.duration_ms,
+    }));
+
+    return new Response(
+      JSON.stringify({
+        emotion: emotionLower,
+        genres: searchConfig.genres,
+        tracks: formattedTracks,
       }),
-    });
-
-    if (!response.ok) {
-      const t = await response.text();
-      console.error("AI gateway error:", response.status, t);
-
-      if (response.status === 429) {
-        return new Response(
-          JSON.stringify({ error: "Too many requests. Please try again in a moment." }),
-          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "AI usage limit reached. Please add credits and try again." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-
-      return new Response(
-        JSON.stringify({ error: "Failed to get recommendations" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const result = await response.json();
-    const args = result?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
-
-    if (!args) {
-      console.error("AI response missing tool_calls:", JSON.stringify(result));
-      return new Response(
-        JSON.stringify({ error: "Failed to get recommendations" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const parsed = JSON.parse(args) as {
-      emotion: string;
-      genres: string[];
-      tracks: Array<{
-        id: string;
-        name: string;
-        artists: string;
-        album: string;
-        albumArt?: string | null;
-        previewUrl?: string | null;
-        spotifyUrl?: string | null;
-        duration?: number | null;
-      }>;
-    };
-
-    return new Response(JSON.stringify(parsed), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   } catch (error) {
     console.error("Error in get-spotify-recommendations function:", error);
     return new Response(
