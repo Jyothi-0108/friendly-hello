@@ -13,10 +13,14 @@ export const useAudioPlayer = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(0.7);
+  const [isMuted, setIsMuted] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const previousVolume = useRef(0.7);
 
   useEffect(() => {
     audioRef.current = new Audio();
+    audioRef.current.volume = volume;
     
     const audio = audioRef.current;
     
@@ -38,6 +42,13 @@ export const useAudioPlayer = () => {
       audio.src = '';
     };
   }, []);
+
+  // Sync volume changes to audio element
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = isMuted ? 0 : volume;
+    }
+  }, [volume, isMuted]);
 
   const play = useCallback((track: Track) => {
     if (!track.previewUrl || !audioRef.current) return;
@@ -77,6 +88,25 @@ export const useAudioPlayer = () => {
     }
   }, []);
 
+  const setVolumeLevel = useCallback((level: number) => {
+    const clampedLevel = Math.max(0, Math.min(1, level));
+    setVolume(clampedLevel);
+    if (clampedLevel > 0) {
+      setIsMuted(false);
+      previousVolume.current = clampedLevel;
+    }
+  }, []);
+
+  const toggleMute = useCallback(() => {
+    if (isMuted) {
+      setVolume(previousVolume.current);
+      setIsMuted(false);
+    } else {
+      previousVolume.current = volume;
+      setIsMuted(true);
+    }
+  }, [isMuted, volume]);
+
   const stop = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -92,9 +122,13 @@ export const useAudioPlayer = () => {
     isPlaying,
     progress,
     duration,
+    volume,
+    isMuted,
     play,
     pause,
     seek,
     stop,
+    setVolume: setVolumeLevel,
+    toggleMute,
   };
 };

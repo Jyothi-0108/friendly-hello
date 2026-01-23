@@ -13,6 +13,7 @@ import VoiceEmotionInput from '@/components/VoiceEmotionInput';
 import { useEmotionDetection } from '@/hooks/useEmotionDetection';
 import { useSpotifyRecommendations } from '@/hooks/useSpotifyRecommendations';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
+import { useHistory } from '@/hooks/useHistory';
 
 const Index = () => {
   const { user, loading, signOut } = useAuth();
@@ -41,9 +42,17 @@ const Index = () => {
     isPlaying,
     progress,
     duration,
+    volume,
+    isMuted,
     play,
     stop,
+    seek,
+    setVolume,
+    toggleMute,
   } = useAudioPlayer();
+
+  const { saveEmotionHistory, savePlayHistory } = useHistory();
+  const [currentEmotion, setCurrentEmotion] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -54,33 +63,67 @@ const Index = () => {
   const handleCapture = useCallback(async (imageBase64: string) => {
     const result = await detectEmotion(imageBase64);
     if (result?.dominantEmotion) {
+      setCurrentEmotion(result.dominantEmotion);
+      await saveEmotionHistory({
+        detectionMode: 'camera',
+        dominantEmotion: result.dominantEmotion,
+        confidence: result.confidence,
+        emotions: result.emotions,
+      });
       await getRecommendations(result.dominantEmotion);
     }
-  }, [detectEmotion, getRecommendations]);
+  }, [detectEmotion, getRecommendations, saveEmotionHistory]);
 
   const handleTextSubmit = useCallback(async (text: string) => {
     const result = await detectTextEmotion(text);
     if (result?.dominantEmotion) {
+      setCurrentEmotion(result.dominantEmotion);
+      await saveEmotionHistory({
+        detectionMode: 'text',
+        dominantEmotion: result.dominantEmotion,
+        confidence: result.confidence,
+        emotions: result.emotions,
+        transcribedText: text,
+      });
       await getRecommendations(result.dominantEmotion);
     }
-  }, [detectTextEmotion, getRecommendations]);
+  }, [detectTextEmotion, getRecommendations, saveEmotionHistory]);
 
   const handleVoiceSubmit = useCallback(async (audioBlob: Blob) => {
     const result = await detectVoiceEmotion(audioBlob);
     if (result?.dominantEmotion) {
+      setCurrentEmotion(result.dominantEmotion);
+      await saveEmotionHistory({
+        detectionMode: 'voice',
+        dominantEmotion: result.dominantEmotion,
+        confidence: result.confidence,
+        emotions: result.emotions,
+        transcribedText: result.transcribedText,
+      });
       await getRecommendations(result.dominantEmotion);
     }
-  }, [detectVoiceEmotion, getRecommendations]);
+  }, [detectVoiceEmotion, getRecommendations, saveEmotionHistory]);
 
   const handleReset = useCallback(() => {
     resetEmotion();
     resetRecommendations();
     stop();
+    setCurrentEmotion(null);
   }, [resetEmotion, resetRecommendations, stop]);
 
-  const handlePlayTrack = useCallback((track: { id: string; name: string; artists: string; previewUrl: string | null; albumArt: string | null }) => {
+  const handlePlayTrack = useCallback((track: { id: string; name: string; artists: string; previewUrl: string | null; albumArt: string | null; album?: string; spotifyUrl?: string }) => {
     play(track);
-  }, [play]);
+    // Save play history
+    savePlayHistory({
+      trackId: track.id,
+      trackName: track.name,
+      artists: track.artists,
+      album: track.album,
+      albumArt: track.albumArt || undefined,
+      spotifyUrl: track.spotifyUrl,
+      emotion: currentEmotion || undefined,
+    });
+  }, [play, savePlayHistory, currentEmotion]);
 
   const handlePlayerPlayPause = useCallback(() => {
     if (currentTrack) {
@@ -232,8 +275,13 @@ const Index = () => {
         isPlaying={isPlaying}
         progress={progress}
         duration={duration}
+        volume={volume}
+        isMuted={isMuted}
         onPlayPause={handlePlayerPlayPause}
         onClose={stop}
+        onSeek={seek}
+        onVolumeChange={setVolume}
+        onToggleMute={toggleMute}
       />
     </div>
   );
