@@ -14,6 +14,78 @@ export type Database = {
   }
   public: {
     Tables: {
+      emotion_history: {
+        Row: {
+          confidence: number
+          created_at: string
+          detection_mode: string
+          dominant_emotion: string
+          emotions: Json
+          id: string
+          transcribed_text: string | null
+          user_id: string
+        }
+        Insert: {
+          confidence: number
+          created_at?: string
+          detection_mode: string
+          dominant_emotion: string
+          emotions?: Json
+          id?: string
+          transcribed_text?: string | null
+          user_id: string
+        }
+        Update: {
+          confidence?: number
+          created_at?: string
+          detection_mode?: string
+          dominant_emotion?: string
+          emotions?: Json
+          id?: string
+          transcribed_text?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      play_history: {
+        Row: {
+          album: string | null
+          album_art: string | null
+          artists: string
+          emotion: string | null
+          id: string
+          played_at: string
+          spotify_url: string | null
+          track_id: string
+          track_name: string
+          user_id: string
+        }
+        Insert: {
+          album?: string | null
+          album_art?: string | null
+          artists: string
+          emotion?: string | null
+          id?: string
+          played_at?: string
+          spotify_url?: string | null
+          track_id: string
+          track_name: string
+          user_id: string
+        }
+        Update: {
+          album?: string | null
+          album_art?: string | null
+          artists?: string
+          emotion?: string | null
+          id?: string
+          played_at?: string
+          spotify_url?: string | null
+          track_id?: string
+          track_name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
