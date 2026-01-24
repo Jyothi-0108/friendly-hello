@@ -43,18 +43,19 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are an advanced facial emotion detection system similar to DeepFace. Analyze the image and:
+            content: `You are an advanced multi-face facial emotion detection system. Analyze the image and:
 
-1. First, check if a human face is clearly visible in the image
-2. If NO face is detected, determine the reason:
+1. First, count how many human faces are clearly visible in the image
+2. If NO faces are detected, determine the reason:
    - "no_face" - No human face present in the frame
    - "poor_lighting" - Face may be present but lighting is too dark or too bright
    - "partial_face" - Only partial face visible (cropped or at extreme angle)
    - "blurry" - Image is too blurry to detect facial features
-   - "multiple_faces" - Multiple faces detected (analyze the most prominent one)
 
-3. If a face IS detected, analyze the facial expression and classify the emotion using DeepFace emotion categories:
+3. If ONE OR MORE faces are detected, analyze EACH face's expression and classify the emotion using these categories:
    - happy, sad, angry, fear, surprise, disgust, neutral
+
+4. For multiple faces, assign each face a position label (e.g., "left", "center", "right", "top-left", etc.) based on their location in the image.
 
 Return ONLY via the provided function tool. Be strict about face detection - if you cannot clearly see facial features (eyes, nose, mouth), report as not detected.`,
           },
@@ -63,7 +64,7 @@ Return ONLY via the provided function tool. Be strict about face detection - if 
             content: [
               {
                 type: "text",
-                text: "Analyze this image for facial emotion detection. First determine if a clear face is visible, then classify the emotion if detected.",
+                text: "Analyze this image for facial emotion detection. Detect ALL faces in the image and classify each person's emotion separately.",
               },
               { type: "image_url", image_url: { url: dataUrl } },
             ],
@@ -74,49 +75,70 @@ Return ONLY via the provided function tool. Be strict about face detection - if 
             type: "function",
             function: {
               name: "return_emotion_result",
-              description: "Return facial emotion detection results including face detection status.",
+              description: "Return multi-face emotion detection results.",
               parameters: {
                 type: "object",
                 additionalProperties: false,
-                required: ["faceDetected", "detectionStatus"],
+                required: ["faceCount", "detectionStatus"],
                 properties: {
-                  faceDetected: { 
-                    type: "boolean",
-                    description: "Whether a clear human face was detected in the image"
+                  faceCount: {
+                    type: "integer",
+                    minimum: 0,
+                    description: "Number of faces detected in the image"
                   },
                   detectionStatus: { 
                     type: "string",
-                    enum: ["detected", "no_face", "poor_lighting", "partial_face", "blurry", "multiple_faces"],
+                    enum: ["detected", "no_face", "poor_lighting", "partial_face", "blurry"],
                     description: "The face detection status"
                   },
                   detectionMessage: {
                     type: "string",
                     description: "Human-readable message explaining the detection result"
                   },
-                  dominantEmotion: { 
-                    type: "string",
-                    description: "The primary emotion detected (only if face detected)"
-                  },
-                  confidence: { 
-                    type: "integer", 
-                    minimum: 0, 
-                    maximum: 100,
-                    description: "Confidence percentage for dominant emotion"
-                  },
-                  emotions: {
+                  faces: {
                     type: "array",
-                    maxItems: 7,
-                    description: "All detected emotions with confidence scores (DeepFace categories)",
+                    description: "Array of detected faces with their emotions",
                     items: {
                       type: "object",
                       additionalProperties: false,
-                      required: ["emotion", "confidence"],
+                      required: ["faceId", "position", "dominantEmotion", "confidence", "emotions"],
                       properties: {
-                        emotion: { 
-                          type: "string",
-                          enum: ["happy", "sad", "angry", "fear", "surprise", "disgust", "neutral"]
+                        faceId: {
+                          type: "integer",
+                          description: "Unique identifier for this face (1, 2, 3, etc.)"
                         },
-                        confidence: { type: "integer", minimum: 0, maximum: 100 },
+                        position: {
+                          type: "string",
+                          description: "Position of face in image (e.g., 'left', 'center', 'right', 'top-left')"
+                        },
+                        dominantEmotion: { 
+                          type: "string",
+                          enum: ["happy", "sad", "angry", "fear", "surprise", "disgust", "neutral"],
+                          description: "The primary emotion detected for this face"
+                        },
+                        confidence: { 
+                          type: "integer", 
+                          minimum: 0, 
+                          maximum: 100,
+                          description: "Confidence percentage for dominant emotion"
+                        },
+                        emotions: {
+                          type: "array",
+                          maxItems: 7,
+                          description: "All detected emotions with confidence scores",
+                          items: {
+                            type: "object",
+                            additionalProperties: false,
+                            required: ["emotion", "confidence"],
+                            properties: {
+                              emotion: { 
+                                type: "string",
+                                enum: ["happy", "sad", "angry", "fear", "surprise", "disgust", "neutral"]
+                              },
+                              confidence: { type: "integer", minimum: 0, maximum: 100 },
+                            },
+                          },
+                        },
                       },
                     },
                   },
@@ -165,27 +187,31 @@ Return ONLY via the provided function tool. Be strict about face detection - if 
     }
 
     const parsed = JSON.parse(args) as {
-      faceDetected: boolean;
+      faceCount: number;
       detectionStatus: string;
       detectionMessage?: string;
-      dominantEmotion?: string;
-      confidence?: number;
-      emotions?: Array<{ emotion: string; confidence: number }>;
+      faces?: Array<{
+        faceId: number;
+        position: string;
+        dominantEmotion: string;
+        confidence: number;
+        emotions: Array<{ emotion: string; confidence: number }>;
+      }>;
     };
 
-    // If face not detected, return appropriate error with reason
-    if (!parsed.faceDetected) {
+    // If no faces detected, return appropriate error with reason
+    if (parsed.faceCount === 0 || parsed.detectionStatus !== "detected") {
       const messages: Record<string, string> = {
         no_face: "No face detected in the frame. Please position your face in front of the camera.",
         poor_lighting: "Face not visible due to poor lighting. Please ensure good lighting on your face.",
         partial_face: "Only partial face visible. Please center your entire face in the frame.",
         blurry: "Image is too blurry. Please hold still and ensure the camera is focused.",
-        multiple_faces: "Multiple faces detected. Please ensure only one person is in the frame.",
       };
 
       return new Response(
         JSON.stringify({
           faceDetected: false,
+          faceCount: 0,
           detectionStatus: parsed.detectionStatus,
           error: parsed.detectionMessage || messages[parsed.detectionStatus] || "Face not detected",
         }),
@@ -193,14 +219,29 @@ Return ONLY via the provided function tool. Be strict about face detection - if 
       );
     }
 
-    // Face detected - return emotion results
+    // Face(s) detected - return multi-face results
+    const faces = parsed.faces || [];
+    
+    // For backwards compatibility, also include primary face data
+    const primaryFace = faces[0];
+    
     return new Response(
       JSON.stringify({
         faceDetected: true,
+        faceCount: parsed.faceCount,
         detectionStatus: "detected",
-        emotions: parsed.emotions || [],
-        dominantEmotion: parsed.dominantEmotion,
-        confidence: parsed.confidence,
+        // Primary face (backwards compatibility)
+        dominantEmotion: primaryFace?.dominantEmotion,
+        confidence: primaryFace?.confidence,
+        emotions: primaryFace?.emotions || [],
+        // Multi-face data
+        faces: faces.map(face => ({
+          faceId: face.faceId,
+          position: face.position,
+          dominantEmotion: face.dominantEmotion,
+          confidence: face.confidence,
+          emotions: face.emotions,
+        })),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

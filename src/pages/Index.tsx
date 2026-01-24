@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Music, LogOut, RotateCcw } from 'lucide-react';
 import WebcamCapture from '@/components/WebcamCapture';
 import EmotionDisplay from '@/components/EmotionDisplay';
+import MultiFaceEmotionDisplay from '@/components/MultiFaceEmotionDisplay';
 import SongRecommendations from '@/components/SongRecommendations';
+import MultiFaceRecommendations from '@/components/MultiFaceRecommendations';
 import MiniPlayer from '@/components/MiniPlayer';
 import DetectionModeSelector, { DetectionMode } from '@/components/DetectionModeSelector';
 import TextEmotionInput from '@/components/TextEmotionInput';
@@ -14,6 +16,22 @@ import { useEmotionDetection } from '@/hooks/useEmotionDetection';
 import { useSpotifyRecommendations } from '@/hooks/useSpotifyRecommendations';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { useHistory } from '@/hooks/useHistory';
+
+interface FaceRecommendations {
+  faceId: number;
+  emotion: string;
+  tracks: Array<{
+    id: string;
+    name: string;
+    artists: string;
+    album: string;
+    albumArt: string | null;
+    previewUrl: string | null;
+    spotifyUrl: string;
+    duration: number;
+  }>;
+  isLoading: boolean;
+}
 
 const Index = () => {
   const { user, loading, signOut } = useAuth();
@@ -53,6 +71,12 @@ const Index = () => {
 
   const { saveEmotionHistory, savePlayHistory } = useHistory();
   const [currentEmotion, setCurrentEmotion] = useState<string | null>(null);
+  
+  // Multi-face state
+  const [selectedFaceId, setSelectedFaceId] = useState<number | null>(null);
+  const [faceRecommendations, setFaceRecommendations] = useState<FaceRecommendations[]>([]);
+
+  const isMultiFace = emotionResult?.faceCount && emotionResult.faceCount > 1 && emotionResult.faces;
 
   useEffect(() => {
     if (!loading && !user) {
@@ -60,17 +84,64 @@ const Index = () => {
     }
   }, [user, loading, navigate]);
 
+  // When faces are detected, auto-select the first one
+  useEffect(() => {
+    if (emotionResult?.faces && emotionResult.faces.length > 0 && selectedFaceId === null) {
+      setSelectedFaceId(emotionResult.faces[0].faceId);
+    }
+  }, [emotionResult?.faces, selectedFaceId]);
+
   const handleCapture = useCallback(async (imageBase64: string) => {
     const result = await detectEmotion(imageBase64);
     if (result?.dominantEmotion) {
       setCurrentEmotion(result.dominantEmotion);
+      
+      // Save emotion history for primary face
       await saveEmotionHistory({
         detectionMode: 'camera',
         dominantEmotion: result.dominantEmotion,
         confidence: result.confidence,
         emotions: result.emotions,
       });
-      await getRecommendations(result.dominantEmotion);
+
+      // Handle multi-face detection
+      if (result.faceCount > 1 && result.faces && result.faces.length > 1) {
+        // Initialize loading state for all faces
+        const initialRecs: FaceRecommendations[] = result.faces.map((face: { faceId: number; dominantEmotion: string }) => ({
+          faceId: face.faceId,
+          emotion: face.dominantEmotion,
+          tracks: [],
+          isLoading: true,
+        }));
+        setFaceRecommendations(initialRecs);
+        setSelectedFaceId(result.faces[0].faceId);
+
+        // Fetch recommendations for each face in parallel
+        const uniqueEmotions = [...new Set(result.faces.map((f: { dominantEmotion: string }) => f.dominantEmotion))];
+        const emotionToTracks: Record<string, typeof initialRecs[0]['tracks']> = {};
+
+        await Promise.all(
+          uniqueEmotions.map(async (emotion: string) => {
+            const recs = await getRecommendations(emotion);
+            if (recs?.tracks) {
+              emotionToTracks[emotion] = recs.tracks;
+            }
+          })
+        );
+
+        // Update face recommendations with fetched tracks
+        setFaceRecommendations(prev => 
+          prev.map(rec => ({
+            ...rec,
+            tracks: emotionToTracks[rec.emotion] || [],
+            isLoading: false,
+          }))
+        );
+      } else {
+        // Single face - use existing flow
+        setFaceRecommendations([]);
+        await getRecommendations(result.dominantEmotion);
+      }
     }
   }, [detectEmotion, getRecommendations, saveEmotionHistory]);
 
@@ -78,6 +149,7 @@ const Index = () => {
     const result = await detectTextEmotion(text);
     if (result?.dominantEmotion) {
       setCurrentEmotion(result.dominantEmotion);
+      setFaceRecommendations([]); // Clear multi-face state for text mode
       await saveEmotionHistory({
         detectionMode: 'text',
         dominantEmotion: result.dominantEmotion,
@@ -93,6 +165,7 @@ const Index = () => {
     const result = await detectVoiceEmotion(audioBlob);
     if (result?.dominantEmotion) {
       setCurrentEmotion(result.dominantEmotion);
+      setFaceRecommendations([]); // Clear multi-face state for voice mode
       await saveEmotionHistory({
         detectionMode: 'voice',
         dominantEmotion: result.dominantEmotion,
@@ -109,9 +182,11 @@ const Index = () => {
     resetRecommendations();
     stop();
     setCurrentEmotion(null);
+    setSelectedFaceId(null);
+    setFaceRecommendations([]);
   }, [resetEmotion, resetRecommendations, stop]);
 
-  const handlePlayTrack = useCallback((track: { id: string; name: string; artists: string; previewUrl: string | null; albumArt: string | null; album?: string; spotifyUrl?: string }) => {
+  const handlePlayTrack = useCallback((track: { id: string; name: string; artists: string; previewUrl: string | null; albumArt: string | null; album?: string; spotifyUrl?: string }, emotion?: string) => {
     play(track);
     // Save play history
     savePlayHistory({
@@ -121,7 +196,7 @@ const Index = () => {
       album: track.album,
       albumArt: track.albumArt || undefined,
       spotifyUrl: track.spotifyUrl,
-      emotion: currentEmotion || undefined,
+      emotion: emotion || currentEmotion || undefined,
     });
   }, [play, savePlayHistory, currentEmotion]);
 
@@ -185,16 +260,20 @@ const Index = () => {
         {/* Title section */}
         <div className="text-center max-w-2xl">
           <h2 className="text-3xl md:text-4xl font-bold mb-3">
-            {emotionResult ? (
+            {isMultiFace ? (
+              <>{emotionResult.faceCount} People Detected - <span className="text-gradient">Multiple Moods</span></>
+            ) : emotionResult ? (
               <>Your Mood: <span className="text-gradient capitalize">{emotionResult.dominantEmotion}</span></>
             ) : (
               <>Detect Your <span className="text-gradient">Emotion</span></>
             )}
           </h2>
           <p className="text-muted-foreground">
-            {emotionResult 
-              ? "Here are personalized song recommendations based on your detected emotion"
-              : "Let us analyze your expression and recommend the perfect music for your mood"
+            {isMultiFace 
+              ? "Personalized song recommendations for each person based on their detected emotion"
+              : emotionResult 
+                ? "Here are personalized song recommendations based on your detected emotion"
+                : "Let us analyze your expression and recommend the perfect music for your mood"
             }
           </p>
         </div>
@@ -246,18 +325,35 @@ const Index = () => {
             )}
           </div>
 
-          {/* Emotion Display */}
+          {/* Emotion Display - Multi-face or Single face */}
           {emotionResult && (
-            <EmotionDisplay
-              dominantEmotion={emotionResult.dominantEmotion}
-              confidence={emotionResult.confidence}
-              allEmotions={emotionResult.emotions}
-            />
+            isMultiFace ? (
+              <MultiFaceEmotionDisplay
+                faces={emotionResult.faces!}
+                selectedFaceId={selectedFaceId}
+                onSelectFace={setSelectedFaceId}
+              />
+            ) : (
+              <EmotionDisplay
+                dominantEmotion={emotionResult.dominantEmotion}
+                confidence={emotionResult.confidence}
+                allEmotions={emotionResult.emotions}
+              />
+            )
           )}
         </div>
 
-        {/* Song Recommendations */}
-        {(isLoadingRecommendations || recommendations) && (
+        {/* Song Recommendations - Multi-face or Single face */}
+        {isMultiFace && faceRecommendations.length > 0 ? (
+          <MultiFaceRecommendations
+            faceRecommendations={faceRecommendations}
+            selectedFaceId={selectedFaceId}
+            onSelectFace={setSelectedFaceId}
+            currentTrackId={currentTrack?.id}
+            isPlaying={isPlaying}
+            onPlayTrack={handlePlayTrack}
+          />
+        ) : (isLoadingRecommendations || recommendations) && (
           <SongRecommendations
             tracks={recommendations?.tracks || []}
             emotion={recommendations?.emotion || emotionResult?.dominantEmotion || ''}
