@@ -7,6 +7,14 @@ interface EmotionData {
   confidence: number;
 }
 
+interface FaceData {
+  faceId: number;
+  position: string;
+  dominantEmotion: string;
+  confidence: number;
+  emotions: EmotionData[];
+}
+
 interface EmotionResult {
   emotions: EmotionData[];
   dominantEmotion: string;
@@ -14,6 +22,9 @@ interface EmotionResult {
   transcribedText?: string;
   faceDetected?: boolean;
   detectionStatus?: string;
+  // Multi-face support
+  faceCount?: number;
+  faces?: FaceData[];
 }
 
 interface FaceDetectionError {
@@ -56,7 +67,6 @@ export const useEmotionDetection = () => {
           poor_lighting: 'Poor Lighting',
           partial_face: 'Partial Face',
           blurry: 'Image Blurry',
-          multiple_faces: 'Multiple Faces',
         };
         
         toast({
@@ -72,10 +82,19 @@ export const useEmotionDetection = () => {
       }
 
       setEmotionResult(data);
-      toast({
-        title: 'Emotion Detected!',
-        description: `You seem ${data.dominantEmotion} (${data.confidence}% confidence)`,
-      });
+      
+      // Different toast for multi-face vs single face
+      if (data.faceCount > 1) {
+        toast({
+          title: `${data.faceCount} Faces Detected!`,
+          description: `Analyzing emotions for ${data.faceCount} people`,
+        });
+      } else {
+        toast({
+          title: 'Emotion Detected!',
+          description: `You seem ${data.dominantEmotion} (${data.confidence}% confidence)`,
+        });
+      }
 
       return data;
     } catch (err) {
