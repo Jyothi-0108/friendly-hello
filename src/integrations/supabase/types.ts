@@ -86,6 +86,83 @@ export type Database = {
         }
         Relationships: []
       }
+      playlist_tracks: {
+        Row: {
+          album: string | null
+          album_art: string | null
+          artists: string
+          created_at: string
+          duration: number | null
+          id: string
+          playlist_id: string
+          position: number
+          preview_url: string | null
+          spotify_url: string | null
+          track_id: string
+          track_name: string
+        }
+        Insert: {
+          album?: string | null
+          album_art?: string | null
+          artists: string
+          created_at?: string
+          duration?: number | null
+          id?: string
+          playlist_id: string
+          position?: number
+          preview_url?: string | null
+          spotify_url?: string | null
+          track_id: string
+          track_name: string
+        }
+        Update: {
+          album?: string | null
+          album_art?: string | null
+          artists?: string
+          created_at?: string
+          duration?: number | null
+          id?: string
+          playlist_id?: string
+          position?: number
+          preview_url?: string | null
+          spotify_url?: string | null
+          track_id?: string
+          track_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "playlist_tracks_playlist_id_fkey"
+            columns: ["playlist_id"]
+            isOneToOne: false
+            referencedRelation: "playlists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      playlists: {
+        Row: {
+          created_at: string
+          emotion: string
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          emotion: string
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          emotion?: string
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
