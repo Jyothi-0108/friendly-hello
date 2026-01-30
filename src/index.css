@@ -49,6 +49,11 @@
     --gradient-primary: linear-gradient(135deg, hsl(280 85% 55%), hsl(320 80% 55%));
     --gradient-secondary: linear-gradient(135deg, hsl(200 75% 50%), hsl(280 85% 55%));
     --gradient-accent: linear-gradient(135deg, hsl(320 80% 55%), hsl(30 90% 55%));
+    
+    /* Emotion theme variables (default to primary) */
+    --emotion-primary: 280 85% 55%;
+    --emotion-accent: 320 80% 55%;
+    --emotion-gradient: linear-gradient(135deg, hsl(280 85% 55%), hsl(320 80% 55%));
   }
 
   .dark {
@@ -88,6 +93,11 @@
     --sidebar-accent-foreground: 280 85% 70%;
     --sidebar-border: 250 20% 18%;
     --sidebar-ring: 280 85% 60%;
+    
+    /* Emotion theme variables for dark mode */
+    --emotion-primary: 280 85% 60%;
+    --emotion-accent: 320 80% 60%;
+    --emotion-gradient: linear-gradient(135deg, hsl(280 85% 60%), hsl(320 80% 60%));
   }
 }
 
@@ -130,5 +140,31 @@
   .glass-dark {
     background: hsl(var(--card) / 0.6);
     backdrop-filter: blur(16px);
+  }
+  
+  /* Emotion-reactive theme utilities */
+  .emotion-gradient {
+    background: var(--emotion-gradient);
+    transition: background 0.6s ease-in-out;
+  }
+  
+  .emotion-primary {
+    color: hsl(var(--emotion-primary));
+    transition: color 0.6s ease-in-out;
+  }
+  
+  .emotion-bg-primary {
+    background-color: hsl(var(--emotion-primary));
+    transition: background-color 0.6s ease-in-out;
+  }
+  
+  .emotion-border {
+    border-color: hsl(var(--emotion-primary));
+    transition: border-color 0.6s ease-in-out;
+  }
+  
+  .emotion-glow {
+    box-shadow: 0 0 40px hsl(var(--emotion-primary) / 0.3);
+    transition: box-shadow 0.6s ease-in-out;
   }
 }
