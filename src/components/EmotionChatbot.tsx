@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Loader2, Bot, User, Sparkles } from 'lucide-react';
+import { Send, Loader2, MessageCircle, User, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -136,7 +136,7 @@ const EmotionChatbot = ({ onEmotionDetected, isProcessing, currentEmotion }: Emo
             "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500",
             currentEmotion ? "emotion-gradient emotion-glow" : "bg-primary/20"
           )}>
-            <Bot className="w-5 h-5 text-primary-foreground" />
+            <MessageCircle className="w-5 h-5 text-primary-foreground" />
           </div>
           <div>
             <h3 className="font-semibold">Mood AI</h3>
@@ -167,7 +167,7 @@ const EmotionChatbot = ({ onEmotionDetected, isProcessing, currentEmotion }: Emo
             >
               {message.role === 'assistant' && (
                 <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                  <Bot className="w-4 h-4 text-primary" />
+                  <MessageCircle className="w-4 h-4 text-primary" />
                 </div>
               )}
               
@@ -200,7 +200,7 @@ const EmotionChatbot = ({ onEmotionDetected, isProcessing, currentEmotion }: Emo
           {isStreaming && (
             <div className="flex gap-3 justify-start">
               <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                <Bot className="w-4 h-4 text-primary" />
+                <MessageCircle className="w-4 h-4 text-primary" />
               </div>
               <div className="bg-muted rounded-2xl rounded-bl-md px-4 py-3">
                 <div className="flex items-center gap-2">
