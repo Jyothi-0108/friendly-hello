@@ -1,136 +1,133 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Loader2, MessageCircle, User, Sparkles } from 'lucide-react';
+import { Send, Loader2, MessageCircle, User, Sparkles, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  emotion?: {
-    dominantEmotion: string;
-    confidence: number;
-    emotions: Array<{ emotion: string; confidence: number }>;
-  };
+  emotion?: string;
 }
 
 interface EmotionChatbotProps {
-  onEmotionDetected: (result: {
-    dominantEmotion: string;
-    confidence: number;
-    emotions: Array<{ emotion: string; confidence: number }>;
-  }, userText: string) => void;
+  onEmotionDetected: (result: { dominantEmotion: string; confidence: number; emotions: Array<{ emotion: string; confidence: number }> }, userText: string) => void;
   isProcessing: boolean;
-  currentEmotion?: string | null;
+  currentEmotion: string | null;
 }
 
-const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/emotion-chatbot`;
-
 const EmotionChatbot = ({ onEmotionDetected, isProcessing, currentEmotion }: EmotionChatbotProps) => {
+  const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       role: 'assistant',
-      content: "Hey there! 👋 I'm here to understand how you're feeling and recommend the perfect music for your mood. Tell me about your day, what's on your mind, or how you're feeling right now!",
-    },
+      content: "Hey there! 👋 I'm your Mood AI companion. Tell me how you're feeling today, and I'll find the perfect music to match your vibe!"
+    }
   ]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, isStreaming]);
 
-  const streamChat = useCallback(async (userMessage: string) => {
+  useEffect(() => {
+    if (isOpen && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isOpen]);
+
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isStreaming || isProcessing) return;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      role: 'user',
+      content: input.trim()
+    };
+
+    setMessages(prev => [...prev, userMessage]);
+    const userText = input.trim();
+    setInput('');
     setIsStreaming(true);
-    
-    const assistantMsgId = crypto.randomUUID();
-    let assistantContent = '';
-    
+
     try {
-      const response = await fetch(CHAT_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-        },
-        body: JSON.stringify({
-          messages: messages.map(m => ({ role: m.role, content: m.content })).concat([
-            { role: 'user', content: userMessage }
-          ]),
-        }),
+      const { data, error } = await supabase.functions.invoke('emotion-chatbot', {
+        body: { 
+          message: userText,
+          conversationHistory: messages.slice(-10).map(m => ({
+            role: m.role,
+            content: m.content
+          }))
+        }
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to get response');
-      }
+      if (error) throw error;
 
-      const data = await response.json();
-      
-      // Add assistant message
-      const newAssistantMsg: Message = {
-        id: assistantMsgId,
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data.message,
-        emotion: data.emotion,
+        content: data.response,
+        emotion: data.emotion?.dominantEmotion
       };
-      
-      setMessages(prev => [...prev, newAssistantMsg]);
-      
-      // If emotion detected, trigger the callback
-      if (data.emotion && data.emotion.dominantEmotion) {
-        onEmotionDetected(data.emotion, userMessage);
+
+      setMessages(prev => [...prev, assistantMessage]);
+
+      if (data.emotion) {
+        const emotions = [
+          { emotion: data.emotion.dominantEmotion, confidence: data.emotion.confidence },
+          { emotion: 'neutral', confidence: 1 - data.emotion.confidence }
+        ];
+        onEmotionDetected({
+          dominantEmotion: data.emotion.dominantEmotion,
+          confidence: data.emotion.confidence,
+          emotions
+        }, userText);
       }
-      
     } catch (error) {
-      console.error('Chat error:', error);
+      console.error('Chatbot error:', error);
       setMessages(prev => [...prev, {
-        id: assistantMsgId,
+        id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: "I'm having trouble connecting right now. Could you try again?",
+        content: "Oops! I'm having trouble connecting right now. Try again in a moment! 🔄"
       }]);
     } finally {
       setIsStreaming(false);
     }
-  }, [messages, onEmotionDetected]);
+  }, [input, isStreaming, isProcessing, messages, onEmotionDetected]);
 
-  const handleSubmit = useCallback(async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    
-    if (!input.trim() || isStreaming || isProcessing) return;
-    
-    const userMessage = input.trim();
-    setInput('');
-    
-    // Add user message immediately
-    const userMsgId = crypto.randomUUID();
-    setMessages(prev => [...prev, {
-      id: userMsgId,
-      role: 'user',
-      content: userMessage,
-    }]);
-    
-    await streamChat(userMessage);
-  }, [input, isStreaming, isProcessing, streamChat]);
+  // Floating button when closed
+  if (!isOpen) {
+    return (
+      <button
+        onClick={() => setIsOpen(true)}
+        className={cn(
+          "fixed bottom-6 left-6 z-50 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-110",
+          currentEmotion ? "emotion-gradient emotion-glow" : "bg-primary"
+        )}
+      >
+        <MessageCircle className="w-6 h-6 text-primary-foreground" />
+        {currentEmotion && (
+          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-green-500 border-2 border-background" />
+        )}
+      </button>
+    );
+  }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
-    }
-  };
-
+  // Expanded chat panel
   return (
-    <div className="flex flex-col h-full bg-card/50 backdrop-blur-sm rounded-2xl border border-border overflow-hidden">
+    <div className="fixed bottom-6 left-6 z-50 w-[350px] h-[500px] bg-card/95 backdrop-blur-xl rounded-2xl border border-border shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
       {/* Header */}
-      <div className="p-4 border-b border-border bg-card/80">
+      <div className="flex items-center justify-between p-4 border-b border-border bg-card/50">
         <div className="flex items-center gap-3">
           <div className={cn(
             "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-500",
@@ -141,17 +138,18 @@ const EmotionChatbot = ({ onEmotionDetected, isProcessing, currentEmotion }: Emo
           <div>
             <h3 className="font-semibold">Mood AI</h3>
             <p className="text-xs text-muted-foreground">
-              {currentEmotion ? (
-                <span className="flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" />
-                  Detected: <span className="capitalize emotion-primary">{currentEmotion}</span>
-                </span>
-              ) : (
-                "Tell me how you're feeling"
-              )}
+              {currentEmotion ? `Feeling ${currentEmotion}` : 'Ready to chat'}
             </p>
           </div>
         </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setIsOpen(false)}
+          className="h-8 w-8"
+        >
+          <X className="w-4 h-4" />
+        </Button>
       </div>
 
       {/* Messages */}
@@ -173,25 +171,24 @@ const EmotionChatbot = ({ onEmotionDetected, isProcessing, currentEmotion }: Emo
               
               <div
                 className={cn(
-                  "max-w-[80%] rounded-2xl px-4 py-3 text-sm",
+                  "max-w-[80%] rounded-2xl px-4 py-3",
                   message.role === 'user'
                     ? "bg-primary text-primary-foreground rounded-br-md"
                     : "bg-muted rounded-bl-md"
                 )}
               >
-                <p className="whitespace-pre-wrap">{message.content}</p>
-                
+                <p className="text-sm leading-relaxed">{message.content}</p>
                 {message.emotion && (
-                  <div className="mt-2 pt-2 border-t border-border/50 text-xs opacity-80">
-                    <span className="capitalize">{message.emotion.dominantEmotion}</span>
-                    <span className="ml-1">({Math.round(message.emotion.confidence)}% confidence)</span>
+                  <div className="flex items-center gap-1 mt-2 text-xs opacity-70">
+                    <Sparkles className="w-3 h-3" />
+                    <span>Detected: {message.emotion}</span>
                   </div>
                 )}
               </div>
-              
+
               {message.role === 'user' && (
                 <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center flex-shrink-0">
-                  <User className="w-4 h-4 text-secondary-foreground" />
+                  <User className="w-4 h-4" />
                 </div>
               )}
             </div>
@@ -214,33 +211,32 @@ const EmotionChatbot = ({ onEmotionDetected, isProcessing, currentEmotion }: Emo
       </ScrollArea>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="p-4 border-t border-border bg-card/80">
+      <form onSubmit={handleSubmit} className="p-4 border-t border-border bg-card/50">
         <div className="flex gap-2">
           <Input
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Share how you're feeling..."
+            placeholder="How are you feeling?"
             disabled={isStreaming || isProcessing}
-            className="flex-1"
+            className="flex-1 bg-background/50"
           />
-          <Button
-            type="submit"
+          <Button 
+            type="submit" 
             size="icon"
             disabled={!input.trim() || isStreaming || isProcessing}
-            className="emotion-gradient"
+            className={cn(
+              "transition-all",
+              currentEmotion && "emotion-gradient"
+            )}
           >
-            {isStreaming || isProcessing ? (
+            {isStreaming ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <Send className="w-4 h-4" />
             )}
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground mt-2 text-center">
-          Express your thoughts and I'll find the perfect music for your mood
-        </p>
       </form>
     </div>
   );
