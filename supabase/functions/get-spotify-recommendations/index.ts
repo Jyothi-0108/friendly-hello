@@ -6,30 +6,36 @@ const corsHeaders = {
 };
 
 // Map emotions to Spotify search queries and genres
+// For negative emotions (sad, angry, fear, disgust), we recommend uplifting/energetic songs
+// to help improve the user's mood rather than matching their current emotion
 const emotionToSearchTerms: Record<string, { keywords: string[]; genres: string[] }> = {
   happy: {
     keywords: ["happy", "upbeat", "feel good", "dance", "party"],
     genres: ["pop", "dance", "happy"],
   },
   sad: {
-    keywords: ["sad", "heartbreak", "melancholy", "emotional", "ballad"],
-    genres: ["acoustic", "indie", "sad"],
+    // Recommend uplifting songs to improve mood
+    keywords: ["uplifting", "feel good", "happy", "motivational", "cheerful"],
+    genres: ["pop", "dance", "soul"],
   },
   angry: {
-    keywords: ["angry", "rage", "intense", "heavy", "aggressive"],
-    genres: ["rock", "metal", "punk"],
+    // Recommend calming/uplifting songs to help release anger
+    keywords: ["energetic", "empowering", "upbeat", "dance", "positive vibes"],
+    genres: ["pop", "dance", "funk"],
   },
   fear: {
-    keywords: ["dark", "ambient", "atmospheric", "tense", "suspense"],
-    genres: ["ambient", "electronic", "soundtrack"],
+    // Recommend calming and reassuring songs
+    keywords: ["calm", "peaceful", "soothing", "uplifting", "hopeful"],
+    genres: ["acoustic", "indie", "chill"],
   },
   surprise: {
     keywords: ["exciting", "energetic", "unexpected", "dynamic", "vibrant"],
     genres: ["electronic", "pop", "indie"],
   },
   disgust: {
-    keywords: ["alternative", "grunge", "underground", "raw"],
-    genres: ["alternative", "grunge", "punk"],
+    // Recommend positive/cleansing songs
+    keywords: ["uplifting", "fresh", "positive", "happy", "feel good"],
+    genres: ["pop", "indie", "soul"],
   },
   neutral: {
     keywords: ["chill", "relaxing", "calm", "peaceful", "ambient"],
