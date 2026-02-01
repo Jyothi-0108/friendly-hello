@@ -14,14 +14,23 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { messages } = await req.json() as { messages: Message[] };
+    const { message, conversationHistory } = await req.json() as { 
+      message: string; 
+      conversationHistory: Message[] 
+    };
     
-    if (!messages || !Array.isArray(messages)) {
+    if (!message) {
       return new Response(
-        JSON.stringify({ error: 'Messages array is required' }),
+        JSON.stringify({ error: 'Message is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Build messages array from conversation history + new user message
+    const messages: Message[] = [
+      ...(conversationHistory || []),
+      { role: 'user', content: message }
+    ];
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
@@ -142,7 +151,7 @@ Example responses:
     
     return new Response(
       JSON.stringify({
-        message: parsed.responseMessage,
+        response: parsed.responseMessage,
         emotion: {
           dominantEmotion: parsed.dominantEmotion,
           confidence: parsed.confidence,
