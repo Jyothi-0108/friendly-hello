@@ -83,14 +83,12 @@ const EmotionChatbot = ({ onEmotionDetected, isProcessing, currentEmotion }: Emo
       setMessages(prev => [...prev, assistantMessage]);
 
       if (data.emotion) {
-        const emotions = [
-          { emotion: data.emotion.dominantEmotion, confidence: data.emotion.confidence },
-          { emotion: 'neutral', confidence: 1 - data.emotion.confidence }
-        ];
         onEmotionDetected({
           dominantEmotion: data.emotion.dominantEmotion,
           confidence: data.emotion.confidence,
-          emotions
+          emotions: data.emotion.emotions || [
+            { emotion: data.emotion.dominantEmotion, confidence: data.emotion.confidence }
+          ]
         }, userText);
       }
     } catch (error) {
