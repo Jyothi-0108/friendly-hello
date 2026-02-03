@@ -111,15 +111,22 @@ const Index = () => {
 
   const handleCapture = useCallback(async (imageBase64: string) => {
     const result = await detectEmotion(imageBase64);
-    if (result?.dominantEmotion) {
-      setCurrentEmotion(result.dominantEmotion);
+    if (result) {
+      const primaryFace = result.faces?.[0];
+      const primaryEmotion = result.dominantEmotion || primaryFace?.dominantEmotion || 'neutral';
+      const primaryConfidence = result.confidence ?? primaryFace?.confidence ?? 0;
+      const primaryEmotions = (result.emotions && result.emotions.length > 0)
+        ? result.emotions
+        : (primaryFace?.emotions || []);
+
+      setCurrentEmotion(primaryEmotion);
       
       // Save emotion history for primary face
       await saveEmotionHistory({
         detectionMode: 'camera',
-        dominantEmotion: result.dominantEmotion,
-        confidence: result.confidence,
-        emotions: result.emotions,
+        dominantEmotion: primaryEmotion,
+        confidence: primaryConfidence,
+        emotions: primaryEmotions,
       });
 
       // Handle multi-face detection
@@ -158,7 +165,7 @@ const Index = () => {
       } else {
         // Single face - use existing flow
         setFaceRecommendations([]);
-        await getRecommendations(result.dominantEmotion);
+        await getRecommendations(primaryEmotion);
       }
     }
   }, [detectEmotion, getRecommendations, saveEmotionHistory]);
@@ -359,7 +366,7 @@ const Index = () => {
               <WebcamCapture 
                 onCapture={handleCapture} 
                 isProcessing={isProcessing}
-                faceDetected={!!emotionResult}
+                faceDetected={emotionResult?.faceDetected === true}
                 faceDetectionError={faceDetectionError}
               />
             ) : (

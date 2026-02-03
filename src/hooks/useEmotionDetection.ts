@@ -54,6 +54,8 @@ export const useEmotionDetection = () => {
 
       // Handle face not detected scenarios
       if (data.faceDetected === false) {
+        // Clear any previous successful result so the UI doesn't look "stuck" on an old detection.
+        setEmotionResult(null);
         const errorData: FaceDetectionError = {
           faceDetected: false,
           detectionStatus: data.detectionStatus,
@@ -100,6 +102,7 @@ export const useEmotionDetection = () => {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to detect emotion';
       setError(message);
+      setEmotionResult(null);
       toast({ title: 'Detection Failed', description: message, variant: 'destructive' });
       return null;
     } finally {
