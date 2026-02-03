@@ -46,19 +46,21 @@ interface VideoDevice {
   label: string;
 }
 
-const AUTO_DETECT_INTERVAL = 5000;
+const AUTO_DETECT_INTERVAL = 8000; // 8 seconds cooldown between auto-detections
+const INITIAL_DETECT_DELAY = 1500; // Wait 1.5s after camera starts before first detection
 
 const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false, faceDetectionError }: WebcamCaptureProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const initialDetectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [devices, setDevices] = useState<VideoDevice[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>('');
   const [isMirrored, setIsMirrored] = useState(true);
-  const [isAutoDetect, setIsAutoDetect] = useState(false);
+  const [isAutoDetect, setIsAutoDetect] = useState(true); // Auto-detect enabled by default
   const [countdown, setCountdown] = useState<number | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showGuidance, setShowGuidance] = useState(true);
@@ -166,6 +168,12 @@ const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false, faceDete
         videoEl.play().catch(() => {});
 
         setIsStreaming(true);
+        
+        // Auto-trigger first detection after a short delay
+        if (initialDetectRef.current) clearTimeout(initialDetectRef.current);
+        initialDetectRef.current = setTimeout(() => {
+          captureImage();
+        }, INITIAL_DETECT_DELAY);
 
         // Detect a "black/empty" video (no frames) and show a helpful error.
         window.setTimeout(() => {
@@ -311,6 +319,9 @@ const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false, faceDete
       stopCamera();
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+      }
+      if (initialDetectRef.current) {
+        clearTimeout(initialDetectRef.current);
       }
     };
   }, [stopCamera]);
@@ -459,10 +470,18 @@ const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false, faceDete
             </div>
 
             {/* Auto-detect countdown indicator */}
-            {isAutoDetect && countdown !== null && (
+            {isAutoDetect && countdown !== null && !isProcessing && (
               <div className="absolute top-3 left-3 bg-primary/90 text-primary-foreground px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm flex items-center gap-2">
                 <div className="w-2 h-2 bg-primary-foreground rounded-full animate-pulse" />
                 Next scan in {countdown}s
+              </div>
+            )}
+            
+            {/* Processing indicator */}
+            {isProcessing && (
+              <div className="absolute top-3 left-3 bg-secondary/90 text-secondary-foreground px-3 py-1 rounded-full text-sm font-medium backdrop-blur-sm flex items-center gap-2">
+                <RefreshCw className="w-3 h-3 animate-spin" />
+                Detecting...
               </div>
             )}
 
@@ -526,7 +545,7 @@ const WebcamCapture = ({ onCapture, isProcessing, faceDetected = false, faceDete
               <Play className="w-4 h-4 text-muted-foreground" />
             )}
             <span className="text-sm">
-              {isAutoDetect ? 'Auto-detect ON' : 'Enable auto-detect'}
+              {isAutoDetect ? 'Auto-scan (8s)' : 'Enable auto-scan'}
             </span>
           </Label>
         </div>
