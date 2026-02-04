@@ -261,13 +261,20 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
-      {/* Emotion-reactive particles */}
+      {/* Professional layered background */}
+      <div className="absolute inset-0 bg-professional" />
+      <div className="absolute inset-0 bg-grid-pattern" />
+      
+      {/* Floating orbs - elegant and subtle */}
+      <div className="orb orb-1" />
+      <div className="orb orb-2" />
+      <div className="orb orb-3" />
+      
+      {/* Vignette overlay for depth */}
+      <div className="absolute inset-0 bg-vignette pointer-events-none" />
+      
+      {/* Emotion-reactive particles (subtle layer) */}
       <EmotionParticles emotion={currentEmotion} isAnimating={isAnimating} />
-
-      {/* Background effects with emotion-reactive colors */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-background to-accent/10 transition-colors duration-700" />
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 rounded-full blur-3xl transition-colors duration-700 emotion-bg-primary opacity-20" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 rounded-full blur-3xl transition-colors duration-700" style={{ background: 'hsl(var(--emotion-accent) / 0.2)' }} />
 
       {/* Header */}
       <header className="relative z-10 flex items-center justify-between p-4 md:p-6">
