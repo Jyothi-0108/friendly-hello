@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEmotionTheme } from '@/contexts/EmotionThemeContext';
@@ -47,6 +47,7 @@ const Index = () => {
   const navigate = useNavigate();
   const { setTheme, isAnimating } = useEmotionTheme();
   const [detectionMode, setDetectionMode] = useState<DetectionMode>('chat');
+  const songsSectionRef = useRef<HTMLDivElement | null>(null);
   
   const { 
     detectEmotion, 
@@ -88,6 +89,15 @@ const Index = () => {
   const [faceRecommendations, setFaceRecommendations] = useState<FaceRecommendations[]>([]);
 
   const isMultiFace = emotionResult?.faceCount && emotionResult.faceCount > 1 && emotionResult.faces;
+
+  const hasAnySongs = (recommendations?.tracks?.length ?? 0) > 0 || faceRecommendations.some(f => (f.tracks?.length ?? 0) > 0);
+
+  // When songs arrive (camera mode), bring the recommendations into view.
+  useEffect(() => {
+    if (detectionMode !== 'camera') return;
+    if (!hasAnySongs) return;
+    songsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [detectionMode, hasAnySongs]);
 
   // Update theme when emotion changes
   useEffect(() => {
@@ -313,7 +323,7 @@ const Index = () => {
       </header>
 
       {/* Main content - Centered Layout */}
-      <main className="relative z-10 flex flex-col h-[calc(100vh-80px)] p-4 gap-4 max-w-5xl mx-auto">
+      <main className="relative z-10 flex flex-col h-[calc(100vh-80px)] min-h-0 p-4 gap-4 max-w-5xl mx-auto">
         {/* Mode Switcher for Camera/Voice */}
         <div className="flex items-center justify-between bg-card/50 backdrop-blur-sm rounded-xl border border-border p-3">
           <div className="flex items-center gap-2">
@@ -353,17 +363,31 @@ const Index = () => {
             />
           )}
           
-          {emotionResult && !isAutoDJActive && (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={handleReset}
-              className="gap-2"
-            >
-              <RotateCcw className="w-4 h-4" />
-              Reset
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {detectionMode === 'camera' && hasAnySongs && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => songsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                className="gap-2"
+              >
+                <Music className="w-4 h-4" />
+                Songs
+              </Button>
+            )}
+
+            {emotionResult && !isAutoDJActive && (
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={handleReset}
+                className="gap-2"
+              >
+                <RotateCcw className="w-4 h-4" />
+                Reset
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Camera/Voice Input - Centered */}
@@ -424,7 +448,7 @@ const Index = () => {
         )}
 
         {/* Song Recommendations */}
-        <div className="flex-1 overflow-auto">
+        <div ref={songsSectionRef} className="flex-1 min-h-0 overflow-auto">
           {isMultiFace && faceRecommendations.length > 0 ? (
             <div className="space-y-4">
               <div className="flex justify-end">
