@@ -43,28 +43,35 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are an advanced multi-face facial emotion detection system. Analyze the image and:
+            content: `You are an expert facial emotion detection system trained to identify subtle emotional expressions. Your goal is to detect the TRUE emotion, not default to neutral.
 
-1. First, count how many human faces are clearly visible in the image
-2. If NO faces are detected, determine the reason:
-   - "no_face" - No human face present in the frame
-   - "poor_lighting" - Face may be present but lighting is too dark or too bright
-   - "partial_face" - Only partial face visible (cropped or at extreme angle)
-   - "blurry" - Image is too blurry to detect facial features
+CRITICAL DETECTION RULES:
+- "neutral" should ONLY be used when the face is completely expressionless (relaxed muscles, no tension, blank stare)
+- Look for MICRO-EXPRESSIONS: slight eyebrow raises, lip corners, eye squinting, forehead tension
+- Even SLIGHT indicators of emotion should be classified as that emotion, not neutral
+- A small smile = happy (not neutral). Slight frown = sad. Tensed jaw = angry. Wide eyes = surprise or fear.
 
-3. If ONE OR MORE faces are detected, analyze EACH face's expression and classify the emotion using these categories:
-   - happy, sad, angry, fear, surprise, disgust, neutral
+ANALYSIS STEPS:
+1. Count visible human faces in the image
+2. If NO faces detected, classify reason: "no_face", "poor_lighting", "partial_face", or "blurry"
+3. For EACH face, analyze these features carefully:
+   - EYES: Are they wide (surprise/fear), squinted (happy/disgust), or drooping (sad)?
+   - EYEBROWS: Raised (surprise), furrowed (angry/sad), or relaxed?
+   - MOUTH: Smiling (happy), frowning (sad), open (surprise), tight (angry/disgust)?
+   - FOREHEAD: Wrinkled (surprise/worry) or smooth?
+   - OVERALL MUSCLE TENSION: Tense (anger/fear) or relaxed?
 
-4. For multiple faces, assign each face a position label (e.g., "left", "center", "right", "top-left", etc.) based on their location in the image.
+4. Classify using: happy, sad, angry, fear, surprise, disgust, neutral
+5. For multiple faces, label positions: "left", "center", "right", "top-left", etc.
 
-Return ONLY via the provided function tool. Be strict about face detection - if you cannot clearly see facial features (eyes, nose, mouth), report as not detected.`,
+IMPORTANT: Be SENSITIVE to emotions. Most people show SOME expression. True neutral (0% expression) is rare. When in doubt between neutral and another emotion, choose the emotion if there's ANY indicator.`,
           },
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: "Analyze this image for facial emotion detection. Detect ALL faces in the image and classify each person's emotion separately.",
+                text: "Analyze this image for facial emotion detection. Look carefully for ANY signs of emotion - even subtle ones. Remember: true neutral expressions are RARE. Most people show some emotional indicator. Detect ALL faces and classify each person's ACTUAL emotion, avoiding neutral unless truly expressionless.",
               },
               { type: "image_url", image_url: { url: dataUrl } },
             ],
