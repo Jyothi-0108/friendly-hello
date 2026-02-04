@@ -167,4 +167,78 @@
     box-shadow: 0 0 40px hsl(var(--emotion-primary) / 0.3);
     transition: box-shadow 0.6s ease-in-out;
   }
+  
+  /* Professional background pattern */
+  .bg-professional {
+    background-image: 
+      radial-gradient(ellipse 80% 50% at 50% -20%, hsl(var(--emotion-primary) / 0.15), transparent),
+      radial-gradient(ellipse 60% 40% at 100% 100%, hsl(var(--emotion-accent) / 0.1), transparent),
+      radial-gradient(ellipse 50% 30% at 0% 80%, hsl(var(--primary) / 0.08), transparent);
+    transition: background 0.8s ease-in-out;
+  }
+  
+  /* Subtle grid pattern overlay */
+  .bg-grid-pattern {
+    background-image: 
+      linear-gradient(hsl(var(--foreground) / 0.02) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(var(--foreground) / 0.02) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+  
+  /* Elegant vignette effect */
+  .bg-vignette {
+    box-shadow: inset 0 0 150px 50px hsl(var(--background) / 0.4);
+  }
+  
+  /* Floating orb styles */
+  .orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.4;
+    transition: all 1s ease-in-out;
+    animation: float 20s ease-in-out infinite;
+  }
+  
+  .orb-1 {
+    width: 500px;
+    height: 500px;
+    top: -10%;
+    right: -10%;
+    background: radial-gradient(circle, hsl(var(--emotion-primary) / 0.3), transparent 70%);
+    animation-delay: 0s;
+  }
+  
+  .orb-2 {
+    width: 400px;
+    height: 400px;
+    bottom: 10%;
+    left: -5%;
+    background: radial-gradient(circle, hsl(var(--emotion-accent) / 0.25), transparent 70%);
+    animation-delay: -7s;
+  }
+  
+  .orb-3 {
+    width: 300px;
+    height: 300px;
+    top: 40%;
+    right: 20%;
+    background: radial-gradient(circle, hsl(var(--secondary) / 0.2), transparent 70%);
+    animation-delay: -14s;
+  }
+  
+  @keyframes float {
+    0%, 100% {
+      transform: translate(0, 0) scale(1);
+    }
+    25% {
+      transform: translate(20px, -30px) scale(1.05);
+    }
+    50% {
+      transform: translate(-10px, 20px) scale(0.95);
+    }
+    75% {
+      transform: translate(-25px, -15px) scale(1.02);
+    }
+  }
 }
