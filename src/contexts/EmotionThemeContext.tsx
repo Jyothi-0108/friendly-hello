@@ -66,11 +66,14 @@ export const EmotionThemeProvider: React.FC<{ children: ReactNode }> = ({ childr
   // Apply theme to CSS variables
   useEffect(() => {
     const root = document.documentElement;
-    const theme = currentTheme ? emotionThemes[currentTheme] : emotionThemes.neutral;
+    const themeKey = currentTheme?.toLowerCase() ?? 'neutral';
+    const theme = emotionThemes[themeKey] ?? emotionThemes.neutral;
     
-    root.style.setProperty('--emotion-primary', theme.primary);
-    root.style.setProperty('--emotion-accent', theme.accent);
-    root.style.setProperty('--emotion-gradient', theme.gradient);
+    if (theme) {
+      root.style.setProperty('--emotion-primary', theme.primary);
+      root.style.setProperty('--emotion-accent', theme.accent);
+      root.style.setProperty('--emotion-gradient', theme.gradient);
+    }
   }, [currentTheme]);
 
   return (
