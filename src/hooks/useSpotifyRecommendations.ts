@@ -25,13 +25,13 @@ export const useSpotifyRecommendations = () => {
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const getRecommendations = useCallback(async (emotion: string) => {
+  const getRecommendations = useCallback(async (emotion: string, language: string = 'all') => {
     setIsLoading(true);
     setError(null);
 
     try {
       const { data, error: fnError } = await supabase.functions.invoke('get-spotify-recommendations', {
-        body: { emotion },
+        body: { emotion, language },
       });
 
       if (fnError) {
@@ -45,7 +45,7 @@ export const useSpotifyRecommendations = () => {
       setRecommendations(data);
       toast({
         title: 'Songs Found!',
-        description: `Found ${data.tracks.length} songs matching your ${emotion} mood`,
+        description: `Found ${data.tracks.length} ${language !== 'all' ? language + ' ' : ''}songs matching your ${emotion} mood`,
       });
 
       return data;
