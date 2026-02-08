@@ -102,13 +102,21 @@ async function searchSpotifyTracks(
   return data.tracks?.items || [];
 }
 
+// Language-specific search modifiers
+const languageSearchModifiers: Record<string, string> = {
+  english: "",
+  hindi: "Bollywood Hindi",
+  telugu: "Telugu Tollywood",
+  all: "",
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { emotion } = await req.json();
+    const { emotion, language = "all" } = await req.json();
 
     if (!emotion) {
       return new Response(
@@ -135,13 +143,21 @@ serve(async (req) => {
     const emotionLower = emotion.toLowerCase();
     const searchConfig = emotionToSearchTerms[emotionLower] || emotionToSearchTerms.neutral;
 
+    // Get language modifier
+    const languageLower = language.toLowerCase();
+    const langModifier = languageSearchModifiers[languageLower] || "";
+
     // Search for tracks using multiple keywords to get variety
     const allTracks: SpotifyTrack[] = [];
     const seenIds = new Set<string>();
 
     for (const keyword of searchConfig.keywords.slice(0, 3)) {
       try {
-        const query = `${keyword} ${searchConfig.genres[0] || ""}`.trim();
+        // Build query with language modifier
+        const query = langModifier 
+          ? `${langModifier} ${keyword}`.trim()
+          : `${keyword} ${searchConfig.genres[0] || ""}`.trim();
+        
         const tracks = await searchSpotifyTracks(accessToken, query, 5);
         
         for (const track of tracks) {
@@ -175,6 +191,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         emotion: emotionLower,
+        language: languageLower,
         genres: searchConfig.genres,
         tracks: formattedTracks,
       }),

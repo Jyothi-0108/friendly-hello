@@ -16,6 +16,7 @@ import AutoDJControl from '@/components/AutoDJControl';
 import SavePlaylistDialog from '@/components/SavePlaylistDialog';
 import PlaylistsDrawer from '@/components/PlaylistsDrawer';
 import EmotionParticles from '@/components/EmotionParticles';
+import LanguageSelector, { SongLanguage } from '@/components/LanguageSelector';
 import { useEmotionDetection } from '@/hooks/useEmotionDetection';
 import { useSpotifyRecommendations } from '@/hooks/useSpotifyRecommendations';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
@@ -47,6 +48,7 @@ const Index = () => {
   const navigate = useNavigate();
   const { setTheme, isAnimating } = useEmotionTheme();
   const [detectionMode, setDetectionMode] = useState<DetectionMode>('chat');
+  const [selectedLanguage, setSelectedLanguage] = useState<SongLanguage>('all');
   const songsSectionRef = useRef<HTMLDivElement | null>(null);
   
   const { 
@@ -92,12 +94,11 @@ const Index = () => {
 
   const hasAnySongs = (recommendations?.tracks?.length ?? 0) > 0 || faceRecommendations.some(f => (f.tracks?.length ?? 0) > 0);
 
-  // When songs arrive (camera mode), bring the recommendations into view.
+  // When songs arrive, bring the recommendations into view.
   useEffect(() => {
-    if (detectionMode !== 'camera') return;
     if (!hasAnySongs) return;
     songsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [detectionMode, hasAnySongs]);
+  }, [hasAnySongs]);
 
   // Update theme when emotion changes
   useEffect(() => {
@@ -157,7 +158,7 @@ const Index = () => {
 
         await Promise.all(
           uniqueEmotions.map(async (emotion: string) => {
-            const recs = await getRecommendations(emotion);
+            const recs = await getRecommendations(emotion, selectedLanguage);
             if (recs?.tracks) {
               emotionToTracks[emotion] = recs.tracks;
             }
@@ -175,10 +176,10 @@ const Index = () => {
       } else {
         // Single face - use existing flow
         setFaceRecommendations([]);
-        await getRecommendations(primaryEmotion);
+        await getRecommendations(primaryEmotion, selectedLanguage);
       }
     }
-  }, [detectEmotion, getRecommendations, saveEmotionHistory]);
+  }, [detectEmotion, getRecommendations, saveEmotionHistory, selectedLanguage]);
 
   const handleChatEmotionDetected = useCallback(async (
     result: { dominantEmotion: string; confidence: number; emotions: Array<{ emotion: string; confidence: number }> },
@@ -193,8 +194,8 @@ const Index = () => {
       emotions: result.emotions,
       transcribedText: userText,
     });
-    await getRecommendations(result.dominantEmotion);
-  }, [getRecommendations, saveEmotionHistory]);
+    await getRecommendations(result.dominantEmotion, selectedLanguage);
+  }, [getRecommendations, saveEmotionHistory, selectedLanguage]);
 
   const handleVoiceSubmit = useCallback(async (audioBlob: Blob) => {
     const result = await detectVoiceEmotion(audioBlob);
@@ -208,9 +209,9 @@ const Index = () => {
         emotions: result.emotions,
         transcribedText: result.transcribedText,
       });
-      await getRecommendations(result.dominantEmotion);
+      await getRecommendations(result.dominantEmotion, selectedLanguage);
     }
-  }, [detectVoiceEmotion, getRecommendations, saveEmotionHistory]);
+  }, [detectVoiceEmotion, getRecommendations, saveEmotionHistory, selectedLanguage]);
 
   const handleReset = useCallback(() => {
     resetEmotion();
@@ -270,7 +271,7 @@ const Index = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden">
+    <div className="min-h-screen bg-background relative overflow-x-hidden">
       {/* Professional layered background */}
       <div className="absolute inset-0 bg-professional" />
       <div className="absolute inset-0 bg-grid-pattern" />
@@ -322,10 +323,10 @@ const Index = () => {
         </div>
       </header>
 
-      {/* Main content - Side by Side Layout */}
-      <main className="relative z-10 flex flex-col h-[calc(100vh-80px)] min-h-0 p-4 gap-4 max-w-7xl mx-auto">
-        {/* Mode Switcher for Camera/Voice */}
-        <div className="flex items-center justify-between bg-card/50 backdrop-blur-sm rounded-xl border border-border p-3">
+      {/* Main content - Vertical Stack Layout */}
+      <main className="relative z-10 px-4 pb-32 max-w-4xl mx-auto space-y-6">
+        {/* Mode Switcher + Language Selector */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-card/50 backdrop-blur-sm rounded-xl border border-border p-3">
           <div className="flex items-center gap-2">
             <button
               onClick={() => setDetectionMode('camera')}
@@ -353,17 +354,20 @@ const Index = () => {
             </button>
           </div>
           
-          {/* Auto-DJ Control (only for camera mode) */}
-          {detectionMode === 'camera' && (
-            <AutoDJControl
-              isActive={isAutoDJActive}
-              nextCaptureIn={nextCaptureIn}
-              onToggle={toggleAutoDJ}
-              disabled={isProcessing}
-            />
-          )}
-          
           <div className="flex items-center gap-2">
+            {/* Language Selector */}
+            <LanguageSelector value={selectedLanguage} onChange={setSelectedLanguage} />
+            
+            {/* Auto-DJ Control (only for camera mode) */}
+            {detectionMode === 'camera' && (
+              <AutoDJControl
+                isActive={isAutoDJActive}
+                nextCaptureIn={nextCaptureIn}
+                onToggle={toggleAutoDJ}
+                disabled={isProcessing}
+              />
+            )}
+            
             {emotionResult && !isAutoDJActive && (
               <Button 
                 variant="outline" 
@@ -378,122 +382,119 @@ const Index = () => {
           </div>
         </div>
 
-        {/* Side by Side: Detection + Songs */}
-        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Left: Camera/Voice Input + Emotion Display */}
-          <div className="flex flex-col gap-4 min-h-0">
-            {detectionMode === 'camera' && (
-              <div className="flex flex-col gap-4">
-                {!isAutoDJActive ? (
-                  <WebcamCapture 
-                    onCapture={handleCapture} 
-                    isProcessing={isProcessing}
-                    faceDetected={emotionResult?.faceDetected === true}
-                    faceDetectionError={faceDetectionError}
+        {/* Detection Section */}
+        <section className="space-y-4">
+          {detectionMode === 'camera' && (
+            <>
+              {!isAutoDJActive ? (
+                <WebcamCapture 
+                  onCapture={handleCapture} 
+                  isProcessing={isProcessing}
+                  faceDetected={emotionResult?.faceDetected === true}
+                  faceDetectionError={faceDetectionError}
+                />
+              ) : (
+                <div className="p-6 rounded-2xl border border-border bg-card/50 backdrop-blur text-center">
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full emotion-gradient flex items-center justify-center animate-pulse emotion-glow">
+                    <Music className="w-6 h-6 text-primary-foreground" />
+                  </div>
+                  <h3 className="font-semibold mb-1">Auto-DJ Active</h3>
+                  <p className="text-xs text-muted-foreground">
+                    Monitoring your mood continuously
+                  </p>
+                </div>
+              )}
+              
+              {emotionResult && (
+                isMultiFace ? (
+                  <MultiFaceEmotionDisplay
+                    faces={emotionResult.faces!}
+                    selectedFaceId={selectedFaceId}
+                    onSelectFace={setSelectedFaceId}
                   />
                 ) : (
-                  <div className="p-6 rounded-2xl border border-border bg-card/50 backdrop-blur text-center">
-                    <div className="w-12 h-12 mx-auto mb-3 rounded-full emotion-gradient flex items-center justify-center animate-pulse emotion-glow">
-                      <Music className="w-6 h-6 text-primary-foreground" />
-                    </div>
-                    <h3 className="font-semibold mb-1">Auto-DJ Active</h3>
-                    <p className="text-xs text-muted-foreground">
-                      Monitoring your mood continuously
-                    </p>
-                  </div>
-                )}
-                
-                {emotionResult && (
-                  isMultiFace ? (
-                    <MultiFaceEmotionDisplay
-                      faces={emotionResult.faces!}
-                      selectedFaceId={selectedFaceId}
-                      onSelectFace={setSelectedFaceId}
-                    />
-                  ) : (
-                    <EmotionDisplay
-                      dominantEmotion={emotionResult.dominantEmotion}
-                      confidence={emotionResult.confidence}
-                      allEmotions={emotionResult.emotions}
-                    />
-                  )
-                )}
-              </div>
-            )}
-            
-            {detectionMode === 'voice' && (
-              <div className="flex flex-col gap-4">
-                <VoiceEmotionInput
-                  onSubmit={handleVoiceSubmit}
-                  isProcessing={isProcessing}
-                />
-                
-                {emotionResult && (
                   <EmotionDisplay
                     dominantEmotion={emotionResult.dominantEmotion}
                     confidence={emotionResult.confidence}
                     allEmotions={emotionResult.emotions}
                   />
-                )}
-              </div>
-            )}
-          </div>
+                )
+              )}
+            </>
+          )}
+          
+          {detectionMode === 'voice' && (
+            <>
+              <VoiceEmotionInput
+                onSubmit={handleVoiceSubmit}
+                isProcessing={isProcessing}
+              />
+              
+              {emotionResult && (
+                <EmotionDisplay
+                  dominantEmotion={emotionResult.dominantEmotion}
+                  confidence={emotionResult.confidence}
+                  allEmotions={emotionResult.emotions}
+                />
+              )}
+            </>
+          )}
+        </section>
 
-          {/* Right: Song Recommendations */}
-          <div ref={songsSectionRef} className="flex flex-col min-h-0 overflow-auto bg-card/30 backdrop-blur-sm rounded-xl border border-border p-4">
-            {isMultiFace && faceRecommendations.length > 0 ? (
-              <div className="space-y-4">
-                <div className="flex justify-end">
-                  <SavePlaylistDialog
-                    tracks={faceRecommendations.find(f => f.faceId === selectedFaceId)?.tracks || []}
-                    emotion={faceRecommendations.find(f => f.faceId === selectedFaceId)?.emotion || 'mixed'}
-                    onSave={savePlaylist}
-                    isSaving={isSaving}
-                  />
-                </div>
-                <MultiFaceRecommendations
-                  faceRecommendations={faceRecommendations}
-                  selectedFaceId={selectedFaceId}
-                  onSelectFace={setSelectedFaceId}
-                  currentTrackId={currentTrack?.id}
-                  isPlaying={isPlaying}
-                  onPlayTrack={handlePlayTrack}
+        {/* Song Recommendations Section - Always Below Detection */}
+        <section ref={songsSectionRef} className="bg-card/30 backdrop-blur-sm rounded-xl border border-border p-4">
+          {isMultiFace && faceRecommendations.length > 0 ? (
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <SavePlaylistDialog
+                  tracks={faceRecommendations.find(f => f.faceId === selectedFaceId)?.tracks || []}
+                  emotion={faceRecommendations.find(f => f.faceId === selectedFaceId)?.emotion || 'mixed'}
+                  onSave={savePlaylist}
+                  isSaving={isSaving}
                 />
               </div>
-            ) : (isLoadingRecommendations || recommendations) ? (
-              <div className="space-y-4">
-                <div className="flex justify-end">
-                  <SavePlaylistDialog
-                    tracks={recommendations?.tracks || []}
-                    emotion={recommendations?.emotion || emotionResult?.dominantEmotion || 'unknown'}
-                    onSave={savePlaylist}
-                    isSaving={isSaving}
-                  />
-                </div>
-                <SongRecommendations
+              <MultiFaceRecommendations
+                faceRecommendations={faceRecommendations}
+                selectedFaceId={selectedFaceId}
+                onSelectFace={setSelectedFaceId}
+                currentTrackId={currentTrack?.id}
+                isPlaying={isPlaying}
+                onPlayTrack={handlePlayTrack}
+              />
+            </div>
+          ) : (isLoadingRecommendations || recommendations) ? (
+            <div className="space-y-4">
+              <div className="flex justify-end">
+                <SavePlaylistDialog
                   tracks={recommendations?.tracks || []}
-                  emotion={recommendations?.emotion || emotionResult?.dominantEmotion || ''}
-                  isLoading={isLoadingRecommendations}
-                  currentTrackId={currentTrack?.id}
-                  isPlaying={isPlaying}
-                  onPlayTrack={handlePlayTrack}
+                  emotion={recommendations?.emotion || emotionResult?.dominantEmotion || 'unknown'}
+                  onSave={savePlaylist}
+                  isSaving={isSaving}
                 />
               </div>
-            ) : (
-              <div className="h-full flex items-center justify-center">
-                <div className="text-center p-6">
-                  <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-primary/20 flex items-center justify-center">
-                    <Music className="w-7 h-7 text-primary" />
-                  </div>
-                  <h3 className="text-lg font-semibold mb-2">Your Songs</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Detect your emotion and songs will appear here!
-                  </p>
+              <SongRecommendations
+                tracks={recommendations?.tracks || []}
+                emotion={recommendations?.emotion || emotionResult?.dominantEmotion || ''}
+                isLoading={isLoadingRecommendations}
+                currentTrackId={currentTrack?.id}
+                isPlaying={isPlaying}
+                onPlayTrack={handlePlayTrack}
+              />
+            </div>
+          ) : (
+            <div className="py-12 flex items-center justify-center">
+              <div className="text-center">
+                <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-primary/20 flex items-center justify-center">
+                  <Music className="w-7 h-7 text-primary" />
                 </div>
+                <h3 className="text-lg font-semibold mb-2">Your Songs</h3>
+                <p className="text-sm text-muted-foreground">
+                  Detect your emotion and songs will appear here!
+                </p>
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          )}
+        </section>
       </main>
 
       {/* Floating Chatbot */}
