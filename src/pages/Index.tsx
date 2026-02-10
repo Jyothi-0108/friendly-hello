@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEmotionTheme } from '@/contexts/EmotionThemeContext';
 import { Button } from '@/components/ui/button';
-import { Music, LogOut, RotateCcw, Camera, Mic } from 'lucide-react';
+import { Music, LogOut, RotateCcw, Camera, Mic, Video } from 'lucide-react';
 import WebcamCapture from '@/components/WebcamCapture';
 import EmotionDisplay from '@/components/EmotionDisplay';
 import MultiFaceEmotionDisplay from '@/components/MultiFaceEmotionDisplay';
 import SongRecommendations from '@/components/SongRecommendations';
+import VideoRecommendations from '@/components/VideoRecommendations';
 import MultiFaceRecommendations from '@/components/MultiFaceRecommendations';
 import MiniPlayer from '@/components/MiniPlayer';
 import EmotionChatbot from '@/components/EmotionChatbot';
@@ -19,6 +20,7 @@ import EmotionParticles from '@/components/EmotionParticles';
 import LanguageSelector, { SongLanguage } from '@/components/LanguageSelector';
 import { useEmotionDetection } from '@/hooks/useEmotionDetection';
 import { useSpotifyRecommendations } from '@/hooks/useSpotifyRecommendations';
+import { useYouTubeRecommendations } from '@/hooks/useYouTubeRecommendations';
 import { useAudioPlayer } from '@/hooks/useAudioPlayer';
 import { useHistory } from '@/hooks/useHistory';
 import { useAutoDJ } from '@/hooks/useAutoDJ';
@@ -26,6 +28,7 @@ import { usePlaylists } from '@/hooks/usePlaylists';
 import { cn } from '@/lib/utils';
 
 type DetectionMode = 'chat' | 'camera' | 'voice';
+type RecommendationType = 'songs' | 'videos';
 
 interface FaceRecommendations {
   faceId: number;
@@ -48,6 +51,7 @@ const Index = () => {
   const navigate = useNavigate();
   const { setTheme, isAnimating } = useEmotionTheme();
   const [detectionMode, setDetectionMode] = useState<DetectionMode>('chat');
+  const [recommendationType, setRecommendationType] = useState<RecommendationType>('songs');
   const [selectedLanguage, setSelectedLanguage] = useState<SongLanguage>('all');
   const songsSectionRef = useRef<HTMLDivElement | null>(null);
   
@@ -62,11 +66,18 @@ const Index = () => {
   } = useEmotionDetection();
   
   const { 
-    getRecommendations, 
-    isLoading: isLoadingRecommendations, 
-    recommendations, 
-    reset: resetRecommendations 
+    getRecommendations: getSpotifyRecommendations, 
+    isLoading: isLoadingSongs, 
+    recommendations: songRecommendations, 
+    reset: resetSongs 
   } = useSpotifyRecommendations();
+
+  const {
+    getRecommendations: getYouTubeRecommendations,
+    isLoading: isLoadingVideos,
+    recommendations: videoRecommendations,
+    reset: resetVideos,
+  } = useYouTubeRecommendations();
 
   const {
     currentTrack,
@@ -92,13 +103,15 @@ const Index = () => {
 
   const isMultiFace = emotionResult?.faceCount && emotionResult.faceCount > 1 && emotionResult.faces;
 
-  const hasAnySongs = (recommendations?.tracks?.length ?? 0) > 0 || faceRecommendations.some(f => (f.tracks?.length ?? 0) > 0);
+  const hasAnySongs = (songRecommendations?.tracks?.length ?? 0) > 0 || faceRecommendations.some(f => (f.tracks?.length ?? 0) > 0);
+  const hasAnyVideos = (videoRecommendations?.videos?.length ?? 0) > 0;
+  const hasAnyResults = hasAnySongs || hasAnyVideos;
 
-  // When songs arrive, bring the recommendations into view.
+  // When results arrive, scroll into view
   useEffect(() => {
-    if (!hasAnySongs) return;
+    if (!hasAnyResults) return;
     songsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, [hasAnySongs]);
+  }, [hasAnyResults]);
 
   // Update theme when emotion changes
   useEffect(() => {
@@ -120,6 +133,15 @@ const Index = () => {
     }
   }, [emotionResult?.faces, selectedFaceId]);
 
+  // Fetch recommendations based on type
+  const fetchRecommendations = useCallback(async (emotion: string) => {
+    if (recommendationType === 'songs') {
+      await getSpotifyRecommendations(emotion, selectedLanguage);
+    } else {
+      await getYouTubeRecommendations(emotion, selectedLanguage);
+    }
+  }, [recommendationType, selectedLanguage, getSpotifyRecommendations, getYouTubeRecommendations]);
+
   const handleCapture = useCallback(async (imageBase64: string) => {
     const result = await detectEmotion(imageBase64);
     if (result) {
@@ -132,7 +154,6 @@ const Index = () => {
 
       setCurrentEmotion(primaryEmotion);
       
-      // Save emotion history for primary face
       await saveEmotionHistory({
         detectionMode: 'camera',
         dominantEmotion: primaryEmotion,
@@ -140,9 +161,8 @@ const Index = () => {
         emotions: primaryEmotions,
       });
 
-      // Handle multi-face detection
-      if (result.faceCount > 1 && result.faces && result.faces.length > 1) {
-        // Initialize loading state for all faces
+      // Handle multi-face detection (songs only)
+      if (result.faceCount > 1 && result.faces && result.faces.length > 1 && recommendationType === 'songs') {
         const initialRecs: FaceRecommendations[] = result.faces.map((face: { faceId: number; dominantEmotion: string }) => ({
           faceId: face.faceId,
           emotion: face.dominantEmotion,
@@ -152,20 +172,18 @@ const Index = () => {
         setFaceRecommendations(initialRecs);
         setSelectedFaceId(result.faces[0].faceId);
 
-        // Fetch recommendations for each face in parallel
         const uniqueEmotions = [...new Set(result.faces.map((f: { dominantEmotion: string }) => f.dominantEmotion))];
         const emotionToTracks: Record<string, typeof initialRecs[0]['tracks']> = {};
 
         await Promise.all(
           uniqueEmotions.map(async (emotion: string) => {
-            const recs = await getRecommendations(emotion, selectedLanguage);
+            const recs = await getSpotifyRecommendations(emotion, selectedLanguage);
             if (recs?.tracks) {
               emotionToTracks[emotion] = recs.tracks;
             }
           })
         );
 
-        // Update face recommendations with fetched tracks
         setFaceRecommendations(prev => 
           prev.map(rec => ({
             ...rec,
@@ -174,12 +192,11 @@ const Index = () => {
           }))
         );
       } else {
-        // Single face - use existing flow
         setFaceRecommendations([]);
-        await getRecommendations(primaryEmotion, selectedLanguage);
+        await fetchRecommendations(primaryEmotion);
       }
     }
-  }, [detectEmotion, getRecommendations, saveEmotionHistory, selectedLanguage]);
+  }, [detectEmotion, getSpotifyRecommendations, saveEmotionHistory, selectedLanguage, recommendationType, fetchRecommendations]);
 
   const handleChatEmotionDetected = useCallback(async (
     result: { dominantEmotion: string; confidence: number; emotions: Array<{ emotion: string; confidence: number }> },
@@ -194,14 +211,14 @@ const Index = () => {
       emotions: result.emotions,
       transcribedText: userText,
     });
-    await getRecommendations(result.dominantEmotion, selectedLanguage);
-  }, [getRecommendations, saveEmotionHistory, selectedLanguage]);
+    await fetchRecommendations(result.dominantEmotion);
+  }, [fetchRecommendations, saveEmotionHistory]);
 
   const handleVoiceSubmit = useCallback(async (audioBlob: Blob) => {
     const result = await detectVoiceEmotion(audioBlob);
     if (result?.dominantEmotion) {
       setCurrentEmotion(result.dominantEmotion);
-      setFaceRecommendations([]); // Clear multi-face state for voice mode
+      setFaceRecommendations([]);
       await saveEmotionHistory({
         detectionMode: 'voice',
         dominantEmotion: result.dominantEmotion,
@@ -209,23 +226,23 @@ const Index = () => {
         emotions: result.emotions,
         transcribedText: result.transcribedText,
       });
-      await getRecommendations(result.dominantEmotion, selectedLanguage);
+      await fetchRecommendations(result.dominantEmotion);
     }
-  }, [detectVoiceEmotion, getRecommendations, saveEmotionHistory, selectedLanguage]);
+  }, [detectVoiceEmotion, fetchRecommendations, saveEmotionHistory]);
 
   const handleReset = useCallback(() => {
     resetEmotion();
-    resetRecommendations();
+    resetSongs();
+    resetVideos();
     stop();
     setCurrentEmotion(null);
     setSelectedFaceId(null);
     setFaceRecommendations([]);
     setTheme(null);
-  }, [resetEmotion, resetRecommendations, stop, setTheme]);
+  }, [resetEmotion, resetSongs, resetVideos, stop, setTheme]);
 
   const handlePlayTrack = useCallback((track: { id: string; name: string; artists: string; previewUrl: string | null; albumArt: string | null; album?: string; spotifyUrl?: string }, emotion?: string) => {
     play(track);
-    // Save play history
     savePlayHistory({
       trackId: track.id,
       trackName: track.name,
@@ -247,7 +264,7 @@ const Index = () => {
   const { isAutoDJActive, nextCaptureIn, toggleAutoDJ } = useAutoDJ({
     onCapture: handleCapture,
     onPlayTrack: handlePlayTrack,
-    tracks: recommendations?.tracks || [],
+    tracks: songRecommendations?.tracks || [],
     isPlaying,
     currentTrackId: currentTrack?.id,
     enabled: detectionMode === 'camera',
@@ -257,6 +274,8 @@ const Index = () => {
     await signOut();
     navigate('/auth');
   };
+
+  const isLoadingRecommendations = isLoadingSongs || isLoadingVideos;
 
   if (loading) {
     return (
@@ -275,16 +294,10 @@ const Index = () => {
       {/* Professional layered background */}
       <div className="absolute inset-0 bg-professional" />
       <div className="absolute inset-0 bg-grid-pattern" />
-      
-      {/* Floating orbs - elegant and subtle */}
       <div className="orb orb-1" />
       <div className="orb orb-2" />
       <div className="orb orb-3" />
-      
-      {/* Vignette overlay for depth */}
       <div className="absolute inset-0 bg-vignette pointer-events-none" />
-      
-      {/* Emotion-reactive particles (subtle layer) */}
       <EmotionParticles emotion={currentEmotion} isAnimating={isAnimating} />
 
       {/* Header */}
@@ -323,62 +336,92 @@ const Index = () => {
         </div>
       </header>
 
-      {/* Main content - Vertical Stack Layout */}
+      {/* Main content */}
       <main className="relative z-10 px-4 pb-32 max-w-4xl mx-auto space-y-6">
-        {/* Mode Switcher + Language Selector */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-card/50 backdrop-blur-sm rounded-xl border border-border p-3">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setDetectionMode('camera')}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg transition-all",
-                detectionMode === 'camera' 
-                  ? "bg-primary text-primary-foreground" 
-                  : "hover:bg-muted text-muted-foreground"
-              )}
-            >
-              <Camera className="w-4 h-4" />
-              <span className="hidden sm:inline">Camera</span>
-            </button>
-            <button
-              onClick={() => setDetectionMode('voice')}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg transition-all",
-                detectionMode === 'voice' 
-                  ? "bg-primary text-primary-foreground" 
-                  : "hover:bg-muted text-muted-foreground"
-              )}
-            >
-              <Mic className="w-4 h-4" />
-              <span className="hidden sm:inline">Voice</span>
-            </button>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            {/* Language Selector */}
-            <LanguageSelector value={selectedLanguage} onChange={setSelectedLanguage} />
-            
-            {/* Auto-DJ Control (only for camera mode) */}
-            {detectionMode === 'camera' && (
-              <AutoDJControl
-                isActive={isAutoDJActive}
-                nextCaptureIn={nextCaptureIn}
-                onToggle={toggleAutoDJ}
-                disabled={isProcessing}
-              />
-            )}
-            
-            {emotionResult && !isAutoDJActive && (
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={handleReset}
-                className="gap-2"
+        {/* Mode Switcher + Language + Recommendation Type */}
+        <div className="flex flex-col gap-3 bg-card/50 backdrop-blur-sm rounded-xl border border-border p-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            {/* Detection Mode */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setDetectionMode('camera')}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 rounded-lg transition-all",
+                  detectionMode === 'camera' 
+                    ? "bg-primary text-primary-foreground" 
+                    : "hover:bg-muted text-muted-foreground"
+                )}
               >
-                <RotateCcw className="w-4 h-4" />
-                Reset
-              </Button>
-            )}
+                <Camera className="w-4 h-4" />
+                <span className="hidden sm:inline">Camera</span>
+              </button>
+              <button
+                onClick={() => setDetectionMode('voice')}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 rounded-lg transition-all",
+                  detectionMode === 'voice' 
+                    ? "bg-primary text-primary-foreground" 
+                    : "hover:bg-muted text-muted-foreground"
+                )}
+              >
+                <Mic className="w-4 h-4" />
+                <span className="hidden sm:inline">Voice</span>
+              </button>
+            </div>
+            
+            <div className="flex items-center gap-2 flex-wrap">
+              <LanguageSelector value={selectedLanguage} onChange={setSelectedLanguage} />
+              
+              {detectionMode === 'camera' && (
+                <AutoDJControl
+                  isActive={isAutoDJActive}
+                  nextCaptureIn={nextCaptureIn}
+                  onToggle={toggleAutoDJ}
+                  disabled={isProcessing}
+                />
+              )}
+              
+              {emotionResult && !isAutoDJActive && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={handleReset}
+                  className="gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  Reset
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Recommendation Type Toggle */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground mr-1">Show:</span>
+            <button
+              onClick={() => setRecommendationType('songs')}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm",
+                recommendationType === 'songs'
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted/50 hover:bg-muted text-muted-foreground"
+              )}
+            >
+              <Music className="w-4 h-4" />
+              Songs
+            </button>
+            <button
+              onClick={() => setRecommendationType('videos')}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm",
+                recommendationType === 'videos'
+                  ? "bg-destructive text-destructive-foreground"
+                  : "bg-muted/50 hover:bg-muted text-muted-foreground"
+              )}
+            >
+              <Video className="w-4 h-4" />
+              Videos
+            </button>
           </div>
         </div>
 
@@ -399,9 +442,7 @@ const Index = () => {
                     <Music className="w-6 h-6 text-primary-foreground" />
                   </div>
                   <h3 className="font-semibold mb-1">Auto-DJ Active</h3>
-                  <p className="text-xs text-muted-foreground">
-                    Monitoring your mood continuously
-                  </p>
+                  <p className="text-xs text-muted-foreground">Monitoring your mood continuously</p>
                 </div>
               )}
               
@@ -429,7 +470,6 @@ const Index = () => {
                 onSubmit={handleVoiceSubmit}
                 isProcessing={isProcessing}
               />
-              
               {emotionResult && (
                 <EmotionDisplay
                   dominantEmotion={emotionResult.dominantEmotion}
@@ -441,58 +481,78 @@ const Index = () => {
           )}
         </section>
 
-        {/* Song Recommendations Section - Always Below Detection */}
+        {/* Recommendations Section */}
         <section ref={songsSectionRef} className="bg-card/30 backdrop-blur-sm rounded-xl border border-border p-4">
-          {isMultiFace && faceRecommendations.length > 0 ? (
-            <div className="space-y-4">
-              <div className="flex justify-end">
-                <SavePlaylistDialog
-                  tracks={faceRecommendations.find(f => f.faceId === selectedFaceId)?.tracks || []}
-                  emotion={faceRecommendations.find(f => f.faceId === selectedFaceId)?.emotion || 'mixed'}
-                  onSave={savePlaylist}
-                  isSaving={isSaving}
-                />
-              </div>
-              <MultiFaceRecommendations
-                faceRecommendations={faceRecommendations}
-                selectedFaceId={selectedFaceId}
-                onSelectFace={setSelectedFaceId}
-                currentTrackId={currentTrack?.id}
-                isPlaying={isPlaying}
-                onPlayTrack={handlePlayTrack}
-              />
-            </div>
-          ) : (isLoadingRecommendations || recommendations) ? (
-            <div className="space-y-4">
-              <div className="flex justify-end">
-                <SavePlaylistDialog
-                  tracks={recommendations?.tracks || []}
-                  emotion={recommendations?.emotion || emotionResult?.dominantEmotion || 'unknown'}
-                  onSave={savePlaylist}
-                  isSaving={isSaving}
-                />
-              </div>
-              <SongRecommendations
-                tracks={recommendations?.tracks || []}
-                emotion={recommendations?.emotion || emotionResult?.dominantEmotion || ''}
-                isLoading={isLoadingRecommendations}
-                currentTrackId={currentTrack?.id}
-                isPlaying={isPlaying}
-                onPlayTrack={handlePlayTrack}
-              />
-            </div>
-          ) : (
-            <div className="py-12 flex items-center justify-center">
-              <div className="text-center">
-                <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-primary/20 flex items-center justify-center">
-                  <Music className="w-7 h-7 text-primary" />
+          {recommendationType === 'songs' ? (
+            // Songs view
+            isMultiFace && faceRecommendations.length > 0 ? (
+              <div className="space-y-4">
+                <div className="flex justify-end">
+                  <SavePlaylistDialog
+                    tracks={faceRecommendations.find(f => f.faceId === selectedFaceId)?.tracks || []}
+                    emotion={faceRecommendations.find(f => f.faceId === selectedFaceId)?.emotion || 'mixed'}
+                    onSave={savePlaylist}
+                    isSaving={isSaving}
+                  />
                 </div>
-                <h3 className="text-lg font-semibold mb-2">Your Songs</h3>
-                <p className="text-sm text-muted-foreground">
-                  Detect your emotion and songs will appear here!
-                </p>
+                <MultiFaceRecommendations
+                  faceRecommendations={faceRecommendations}
+                  selectedFaceId={selectedFaceId}
+                  onSelectFace={setSelectedFaceId}
+                  currentTrackId={currentTrack?.id}
+                  isPlaying={isPlaying}
+                  onPlayTrack={handlePlayTrack}
+                />
               </div>
-            </div>
+            ) : (isLoadingSongs || songRecommendations) ? (
+              <div className="space-y-4">
+                <div className="flex justify-end">
+                  <SavePlaylistDialog
+                    tracks={songRecommendations?.tracks || []}
+                    emotion={songRecommendations?.emotion || emotionResult?.dominantEmotion || 'unknown'}
+                    onSave={savePlaylist}
+                    isSaving={isSaving}
+                  />
+                </div>
+                <SongRecommendations
+                  tracks={songRecommendations?.tracks || []}
+                  emotion={songRecommendations?.emotion || emotionResult?.dominantEmotion || ''}
+                  isLoading={isLoadingSongs}
+                  currentTrackId={currentTrack?.id}
+                  isPlaying={isPlaying}
+                  onPlayTrack={handlePlayTrack}
+                />
+              </div>
+            ) : (
+              <div className="py-12 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-primary/20 flex items-center justify-center">
+                    <Music className="w-7 h-7 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">Your Songs</h3>
+                  <p className="text-sm text-muted-foreground">Detect your emotion and songs will appear here!</p>
+                </div>
+              </div>
+            )
+          ) : (
+            // Videos view
+            (isLoadingVideos || videoRecommendations) ? (
+              <VideoRecommendations
+                videos={videoRecommendations?.videos || []}
+                emotion={videoRecommendations?.emotion || emotionResult?.dominantEmotion || ''}
+                isLoading={isLoadingVideos}
+              />
+            ) : (
+              <div className="py-12 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="w-14 h-14 mx-auto mb-4 rounded-full bg-destructive/20 flex items-center justify-center">
+                    <Video className="w-7 h-7 text-destructive" />
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">Your Videos</h3>
+                  <p className="text-sm text-muted-foreground">Detect your emotion and YouTube videos will appear here!</p>
+                </div>
+              </div>
+            )
           )}
         </section>
       </main>
