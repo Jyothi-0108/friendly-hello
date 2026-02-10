@@ -50,12 +50,10 @@ const VideoRecommendations = ({ videos, emotion, isLoading }: VideoRecommendatio
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {videos.map((video) => (
-          <a
+          <div
             key={video.id}
-            href={`https://www.youtube.com/watch?v=${video.id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group rounded-xl bg-card border border-border hover:border-primary/50 hover:shadow-md transition-all overflow-hidden"
+            onClick={() => window.open(`https://www.youtube.com/watch?v=${video.id}`, '_blank', 'noopener,noreferrer')}
+            className="group rounded-xl bg-card border border-border hover:border-primary/50 hover:shadow-md transition-all overflow-hidden cursor-pointer"
           >
             <div className="relative aspect-video">
               <img
@@ -73,7 +71,7 @@ const VideoRecommendations = ({ videos, emotion, isLoading }: VideoRecommendatio
               <h4 className="font-medium text-foreground text-sm line-clamp-2 mb-1">{video.title}</h4>
               <p className="text-xs text-muted-foreground truncate">{video.channelTitle}</p>
             </div>
-          </a>
+          </div>
         ))}
       </div>
     </div>
