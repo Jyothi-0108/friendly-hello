@@ -28,7 +28,7 @@ import { usePlaylists } from '@/hooks/usePlaylists';
 import { cn } from '@/lib/utils';
 
 type DetectionMode = 'chat' | 'camera' | 'voice';
-type RecommendationType = 'songs' | 'videos';
+
 
 interface FaceRecommendations {
   faceId: number;
@@ -51,7 +51,6 @@ const Index = () => {
   const navigate = useNavigate();
   const { setTheme, isAnimating } = useEmotionTheme();
   const [detectionMode, setDetectionMode] = useState<DetectionMode>('chat');
-  const [recommendationType, setRecommendationType] = useState<RecommendationType>('songs');
   const [selectedLanguage, setSelectedLanguage] = useState<SongLanguage>('all');
   const songsSectionRef = useRef<HTMLDivElement | null>(null);
   
@@ -135,12 +134,11 @@ const Index = () => {
 
   // Fetch recommendations based on type
   const fetchRecommendations = useCallback(async (emotion: string) => {
-    if (recommendationType === 'songs') {
-      await getSpotifyRecommendations(emotion, selectedLanguage);
-    } else {
-      await getYouTubeRecommendations(emotion, selectedLanguage);
-    }
-  }, [recommendationType, selectedLanguage, getSpotifyRecommendations, getYouTubeRecommendations]);
+    await Promise.all([
+      getSpotifyRecommendations(emotion, selectedLanguage),
+      getYouTubeRecommendations(emotion, selectedLanguage),
+    ]);
+  }, [selectedLanguage, getSpotifyRecommendations, getYouTubeRecommendations]);
 
   const handleCapture = useCallback(async (imageBase64: string) => {
     const result = await detectEmotion(imageBase64);
@@ -162,7 +160,7 @@ const Index = () => {
       });
 
       // Handle multi-face detection (songs only)
-      if (result.faceCount > 1 && result.faces && result.faces.length > 1 && recommendationType === 'songs') {
+      if (result.faceCount > 1 && result.faces && result.faces.length > 1) {
         const initialRecs: FaceRecommendations[] = result.faces.map((face: { faceId: number; dominantEmotion: string }) => ({
           faceId: face.faceId,
           emotion: face.dominantEmotion,
@@ -196,7 +194,7 @@ const Index = () => {
         await fetchRecommendations(primaryEmotion);
       }
     }
-  }, [detectEmotion, getSpotifyRecommendations, saveEmotionHistory, selectedLanguage, recommendationType, fetchRecommendations]);
+  }, [detectEmotion, getSpotifyRecommendations, saveEmotionHistory, selectedLanguage, fetchRecommendations]);
 
   const handleChatEmotionDetected = useCallback(async (
     result: { dominantEmotion: string; confidence: number; emotions: Array<{ emotion: string; confidence: number }> },
@@ -337,7 +335,7 @@ const Index = () => {
       </header>
 
       {/* Main content */}
-      <main className="relative z-10 px-4 pb-32 max-w-4xl mx-auto space-y-6">
+      <main className="relative z-10 px-4 pb-32 max-w-6xl mx-auto space-y-6">
         {/* Mode Switcher + Language + Recommendation Type */}
         <div className="flex flex-col gap-3 bg-card/50 backdrop-blur-sm rounded-xl border border-border p-3">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -395,34 +393,6 @@ const Index = () => {
             </div>
           </div>
 
-          {/* Recommendation Type Toggle */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground mr-1">Show:</span>
-            <button
-              onClick={() => setRecommendationType('songs')}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm",
-                recommendationType === 'songs'
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted/50 hover:bg-muted text-muted-foreground"
-              )}
-            >
-              <Music className="w-4 h-4" />
-              Songs
-            </button>
-            <button
-              onClick={() => setRecommendationType('videos')}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2 rounded-lg transition-all text-sm",
-                recommendationType === 'videos'
-                  ? "bg-destructive text-destructive-foreground"
-                  : "bg-muted/50 hover:bg-muted text-muted-foreground"
-              )}
-            >
-              <Video className="w-4 h-4" />
-              Videos
-            </button>
-          </div>
         </div>
 
         {/* Detection Section */}
@@ -481,11 +451,11 @@ const Index = () => {
           )}
         </section>
 
-        {/* Recommendations Section */}
-        <section ref={songsSectionRef} className="bg-card/30 backdrop-blur-sm rounded-xl border border-border p-4">
-          {recommendationType === 'songs' ? (
-            // Songs view
-            isMultiFace && faceRecommendations.length > 0 ? (
+        {/* Recommendations Section - Side by Side */}
+        <section ref={songsSectionRef} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Songs Panel */}
+          <div className="bg-card/30 backdrop-blur-sm rounded-xl border border-border p-4">
+            {isMultiFace && faceRecommendations.length > 0 ? (
               <div className="space-y-4">
                 <div className="flex justify-end">
                   <SavePlaylistDialog
@@ -533,10 +503,12 @@ const Index = () => {
                   <p className="text-sm text-muted-foreground">Detect your emotion and songs will appear here!</p>
                 </div>
               </div>
-            )
-          ) : (
-            // Videos view
-            (isLoadingVideos || videoRecommendations) ? (
+            )}
+          </div>
+
+          {/* Videos Panel */}
+          <div className="bg-card/30 backdrop-blur-sm rounded-xl border border-border p-4">
+            {(isLoadingVideos || videoRecommendations) ? (
               <VideoRecommendations
                 videos={videoRecommendations?.videos || []}
                 emotion={videoRecommendations?.emotion || emotionResult?.dominantEmotion || ''}
@@ -552,8 +524,8 @@ const Index = () => {
                   <p className="text-sm text-muted-foreground">Detect your emotion and YouTube videos will appear here!</p>
                 </div>
               </div>
-            )
-          )}
+            )}
+          </div>
         </section>
       </main>
 
