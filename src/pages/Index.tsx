@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEmotionTheme } from '@/contexts/EmotionThemeContext';
 import { Button } from '@/components/ui/button';
-import { Music, LogOut, RotateCcw, Camera, Mic, Video } from 'lucide-react';
+import { Music, LogOut, RotateCcw, Camera, Mic, Video, Music2 } from 'lucide-react';
 import WebcamCapture from '@/components/WebcamCapture';
 import EmotionDisplay from '@/components/EmotionDisplay';
 import MultiFaceEmotionDisplay from '@/components/MultiFaceEmotionDisplay';
@@ -14,6 +14,7 @@ import MiniPlayer from '@/components/MiniPlayer';
 import EmotionChatbot from '@/components/EmotionChatbot';
 import VoiceEmotionInput from '@/components/VoiceEmotionInput';
 import AutoDJControl from '@/components/AutoDJControl';
+import SingAndStore from '@/components/SingAndStore';
 import SavePlaylistDialog from '@/components/SavePlaylistDialog';
 import PlaylistsDrawer from '@/components/PlaylistsDrawer';
 import EmotionParticles from '@/components/EmotionParticles';
@@ -27,7 +28,7 @@ import { useAutoDJ } from '@/hooks/useAutoDJ';
 import { usePlaylists } from '@/hooks/usePlaylists';
 import { cn } from '@/lib/utils';
 
-type DetectionMode = 'chat' | 'camera' | 'voice';
+type DetectionMode = 'chat' | 'camera' | 'voice' | 'sing';
 
 
 interface FaceRecommendations {
@@ -365,6 +366,18 @@ const Index = () => {
                 <Mic className="w-4 h-4" />
                 <span className="hidden sm:inline">Voice</span>
               </button>
+              <button
+                onClick={() => setDetectionMode('sing')}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 rounded-lg transition-all",
+                  detectionMode === 'sing' 
+                    ? "bg-primary text-primary-foreground" 
+                    : "hover:bg-muted text-muted-foreground"
+                )}
+              >
+                <Music2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Sing & Store</span>
+              </button>
             </div>
             
             <div className="flex items-center gap-2 flex-wrap">
@@ -449,9 +462,14 @@ const Index = () => {
               )}
             </>
           )}
+
+          {detectionMode === 'sing' && (
+            <SingAndStore />
+          )}
         </section>
 
         {/* Recommendations Section - Side by Side */}
+        {detectionMode !== 'sing' && (
         <section ref={songsSectionRef} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Songs Panel */}
           <div className="bg-card/30 backdrop-blur-sm rounded-xl border border-border p-4">
@@ -527,6 +545,7 @@ const Index = () => {
             )}
           </div>
         </section>
+        )}
       </main>
 
       {/* Floating Chatbot */}
