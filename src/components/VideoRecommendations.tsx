@@ -1,5 +1,5 @@
-import { ExternalLink, Play, Video } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { useState } from 'react';
+import { ExternalLink, Play, X } from 'lucide-react';
 import type { YouTubeVideo } from '@/hooks/useYouTubeRecommendations';
 
 interface VideoRecommendationsProps {
@@ -9,6 +9,8 @@ interface VideoRecommendationsProps {
 }
 
 const VideoRecommendations = ({ videos, emotion, isLoading }: VideoRecommendationsProps) => {
+  const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
+
   if (isLoading) {
     return (
       <div className="w-full space-y-4">
@@ -52,21 +54,41 @@ const VideoRecommendations = ({ videos, emotion, isLoading }: VideoRecommendatio
         {videos.map((video) => (
           <div
             key={video.id}
-            onClick={() => window.open(`https://www.youtube.com/watch?v=${video.id}`, '_blank', 'noopener,noreferrer')}
-            className="group rounded-xl bg-card border border-border hover:border-primary/50 hover:shadow-md transition-all overflow-hidden cursor-pointer"
+            className="group rounded-xl bg-card border border-border hover:border-primary/50 hover:shadow-md transition-all overflow-hidden"
           >
-            <div className="relative aspect-video">
-              <img
-                src={video.thumbnail}
-                alt={video.title}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <div className="w-14 h-14 rounded-full bg-destructive/90 flex items-center justify-center">
-                  <Play className="w-7 h-7 text-white fill-white" />
+            {playingVideoId === video.id ? (
+              <div className="relative aspect-video">
+                <iframe
+                  src={`https://www.youtube.com/embed/${video.id}?autoplay=1`}
+                  title={video.title}
+                  className="w-full h-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+                <button
+                  onClick={() => setPlayingVideoId(null)}
+                  className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/70 flex items-center justify-center hover:bg-black/90 transition-colors"
+                >
+                  <X className="w-4 h-4 text-white" />
+                </button>
+              </div>
+            ) : (
+              <div
+                className="relative aspect-video cursor-pointer"
+                onClick={() => setPlayingVideoId(video.id)}
+              >
+                <img
+                  src={video.thumbnail}
+                  alt={video.title}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <div className="w-14 h-14 rounded-full bg-destructive/90 flex items-center justify-center">
+                    <Play className="w-7 h-7 text-white fill-white" />
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
             <div className="p-3">
               <h4 className="font-medium text-foreground text-sm line-clamp-2 mb-1">{video.title}</h4>
               <p className="text-xs text-muted-foreground truncate">{video.channelTitle}</p>
