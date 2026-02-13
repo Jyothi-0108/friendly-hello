@@ -160,7 +160,7 @@ const Index = () => {
         emotions: primaryEmotions,
       });
 
-      // Handle multi-face detection (songs only)
+      // Handle multi-face detection
       if (result.faceCount > 1 && result.faces && result.faces.length > 1) {
         const initialRecs: FaceRecommendations[] = result.faces.map((face: { faceId: number; dominantEmotion: string }) => ({
           faceId: face.faceId,
@@ -174,14 +174,17 @@ const Index = () => {
         const uniqueEmotions = [...new Set(result.faces.map((f: { dominantEmotion: string }) => f.dominantEmotion))];
         const emotionToTracks: Record<string, typeof initialRecs[0]['tracks']> = {};
 
-        await Promise.all(
-          uniqueEmotions.map(async (emotion: string) => {
+        await Promise.all([
+          // Fetch Spotify for each unique face emotion
+          ...uniqueEmotions.map(async (emotion: string) => {
             const recs = await getSpotifyRecommendations(emotion, selectedLanguage);
             if (recs?.tracks) {
               emotionToTracks[emotion] = recs.tracks;
             }
-          })
-        );
+          }),
+          // Also fetch YouTube for the primary emotion
+          getYouTubeRecommendations(primaryEmotion, selectedLanguage),
+        ]);
 
         setFaceRecommendations(prev => 
           prev.map(rec => ({
