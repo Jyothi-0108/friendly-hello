@@ -129,11 +129,13 @@ const Auth = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Animated background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-background to-accent/20" />
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/30 rounded-full blur-3xl animate-pulse" />
-      <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/30 rounded-full blur-3xl animate-pulse delay-1000" />
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-background bg-professional bg-grid-pattern">
+      {/* Floating orbs */}
+      <div className="orb orb-1" />
+      <div className="orb orb-2" />
+      <div className="orb orb-3" />
+      {/* Vignette overlay */}
+      <div className="absolute inset-0 bg-vignette pointer-events-none" />
       
       <Card className="w-full max-w-md relative z-10 glass-dark border-primary/20 shadow-2xl">
         <CardHeader className="text-center space-y-4">
