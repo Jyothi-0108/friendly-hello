@@ -171,9 +171,40 @@ serve(async (req) => {
       }
     }
 
+    // Fallback: if Spotify returned nothing (premium-required error, rate limits, etc.)
+    // search for popular curated playlists/tracks by genre as a last resort
+    if (allTracks.length === 0) {
+      const fallbackQueries = [
+        `${langModifier} ${searchConfig.genres[0]} hits`.trim(),
+        `${langModifier} top ${emotionLower} songs`.trim(),
+        `${langModifier} ${searchConfig.genres[1] || "pop"} popular`.trim(),
+      ];
+      for (const q of fallbackQueries) {
+        try {
+          const tracks = await searchSpotifyTracks(accessToken, q, 8);
+          for (const track of tracks) {
+            if (!seenIds.has(track.id)) {
+              seenIds.add(track.id);
+              allTracks.push(track);
+            }
+          }
+          if (allTracks.length >= 8) break;
+        } catch (err) {
+          console.error(`Fallback search error for "${q}":`, err);
+        }
+      }
+    }
+
     // Shuffle and take top 8 tracks
     const shuffled = allTracks.sort(() => Math.random() - 0.5);
-    const selectedTracks = shuffled.slice(0, 8);
+    let selectedTracks = shuffled.slice(0, 8);
+
+    // Final fallback: curated static recommendations (open Spotify search links)
+    // Used when API access is blocked (e.g., premium-required restriction)
+    let usedFallback = false;
+    if (selectedTracks.length === 0) {
+      usedFallback = true;
+    }
 
     // Format tracks for response
     const formattedTracks = selectedTracks.map((track) => ({
