@@ -349,22 +349,39 @@ serve(async (req) => {
     // Final fallback: curated static recommendations (open Spotify search links)
     // Used when API access is blocked (e.g., premium-required restriction)
     let usedFallback = false;
+    let formattedTracks: Array<Record<string, unknown>>;
+
     if (selectedTracks.length === 0) {
       usedFallback = true;
+      const curated = getFallbackTracks(emotionLower, languageLower);
+      // Shuffle curated list for variety on each call
+      const shuffledCurated = [...curated].sort(() => Math.random() - 0.5).slice(0, 8);
+      formattedTracks = shuffledCurated.map((t, idx) => {
+        const searchQuery = encodeURIComponent(`${t.name} ${t.artists}`);
+        return {
+          id: `fallback-${emotionLower}-${languageLower}-${idx}-${Date.now()}`,
+          name: t.name,
+          artists: t.artists,
+          album: t.album,
+          albumArt: null,
+          previewUrl: null,
+          spotifyUrl: `https://open.spotify.com/search/${searchQuery}`,
+          duration: 0,
+        };
+      });
+    } else {
+      formattedTracks = selectedTracks.map((track) => ({
+        id: track.id,
+        name: track.name,
+        artists: track.artists.map((a) => a.name).join(", "),
+        album: track.album.name,
+        albumArt: track.album.images.find((img) => img.height === 300)?.url ||
+                  track.album.images[0]?.url || null,
+        previewUrl: track.preview_url,
+        spotifyUrl: track.external_urls.spotify,
+        duration: track.duration_ms,
+      }));
     }
-
-    // Format tracks for response
-    const formattedTracks = selectedTracks.map((track) => ({
-      id: track.id,
-      name: track.name,
-      artists: track.artists.map((a) => a.name).join(", "),
-      album: track.album.name,
-      albumArt: track.album.images.find((img) => img.height === 300)?.url ||
-                track.album.images[0]?.url || null,
-      previewUrl: track.preview_url,
-      spotifyUrl: track.external_urls.spotify,
-      duration: track.duration_ms,
-    }));
 
     return new Response(
       JSON.stringify({
@@ -372,6 +389,7 @@ serve(async (req) => {
         language: languageLower,
         genres: searchConfig.genres,
         tracks: formattedTracks,
+        fallback: usedFallback,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
