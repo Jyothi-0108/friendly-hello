@@ -43,6 +43,153 @@ const emotionToSearchTerms: Record<string, { keywords: string[]; genres: string[
   },
 };
 
+// Curated fallback tracks per emotion+language
+// Used when Spotify Search API is restricted (premium-required, rate limit, etc.)
+// Each track links to an open Spotify search URL so users can still play them
+type FallbackTrack = { name: string; artists: string; album: string };
+const fallbackLibrary: Record<string, Record<string, FallbackTrack[]>> = {
+  happy: {
+    english: [
+      { name: "Happy", artists: "Pharrell Williams", album: "G I R L" },
+      { name: "Can't Stop the Feeling!", artists: "Justin Timberlake", album: "Trolls" },
+      { name: "Uptown Funk", artists: "Mark Ronson, Bruno Mars", album: "Uptown Special" },
+      { name: "Walking on Sunshine", artists: "Katrina & The Waves", album: "Walking on Sunshine" },
+      { name: "Good as Hell", artists: "Lizzo", album: "Cuz I Love You" },
+      { name: "Levitating", artists: "Dua Lipa", album: "Future Nostalgia" },
+      { name: "Sunflower", artists: "Post Malone, Swae Lee", album: "Spider-Man: Into the Spider-Verse" },
+      { name: "Best Day of My Life", artists: "American Authors", album: "Oh, What a Life" },
+    ],
+    hindi: [
+      { name: "Badtameez Dil", artists: "Benny Dayal", album: "Yeh Jawaani Hai Deewani" },
+      { name: "Gallan Goodiyaan", artists: "Yashita Sharma, Manish Kumar", album: "Dil Dhadakne Do" },
+      { name: "Kar Gayi Chull", artists: "Badshah, Fazilpuria", album: "Kapoor & Sons" },
+      { name: "London Thumakda", artists: "Labh Janjua", album: "Queen" },
+      { name: "Nashe Si Chadh Gayi", artists: "Arijit Singh", album: "Befikre" },
+      { name: "Kala Chashma", artists: "Amar Arshi, Badshah", album: "Baar Baar Dekho" },
+      { name: "Dil Dhadakne Do", artists: "Priyanka Chopra", album: "Zindagi Na Milegi Dobara" },
+      { name: "Senorita", artists: "Farhan Akhtar", album: "Zindagi Na Milegi Dobara" },
+    ],
+    telugu: [
+      { name: "Butta Bomma", artists: "Armaan Malik", album: "Ala Vaikunthapurramuloo" },
+      { name: "Saranga Dariya", artists: "Mangli", album: "Love Story" },
+      { name: "Ramuloo Ramulaa", artists: "Anurag Kulkarni", album: "Ala Vaikunthapurramuloo" },
+      { name: "Naatu Naatu", artists: "Rahul Sipligunj, Kaala Bhairava", album: "RRR" },
+      { name: "Oo Antava", artists: "Indravathi Chauhan", album: "Pushpa" },
+      { name: "Inkem Inkem Inkem Kaavaale", artists: "Sid Sriram", album: "Geetha Govindam" },
+      { name: "Samajavaragamana", artists: "Sid Sriram", album: "Ala Vaikunthapurramuloo" },
+      { name: "Daakko Daakko Meka", artists: "Sahithi Chaganti", album: "Pushpa" },
+    ],
+  },
+  sad: {
+    english: [
+      { name: "Someone Like You", artists: "Adele", album: "21" },
+      { name: "Fix You", artists: "Coldplay", album: "X&Y" },
+      { name: "Let Her Go", artists: "Passenger", album: "All the Little Lights" },
+      { name: "Photograph", artists: "Ed Sheeran", album: "x" },
+      { name: "Skinny Love", artists: "Birdy", album: "Birdy" },
+      { name: "Stay With Me", artists: "Sam Smith", album: "In the Lonely Hour" },
+      { name: "All of Me", artists: "John Legend", album: "Love in the Future" },
+      { name: "Hallelujah", artists: "Jeff Buckley", album: "Grace" },
+    ],
+    hindi: [
+      { name: "Channa Mereya", artists: "Arijit Singh", album: "Ae Dil Hai Mushkil" },
+      { name: "Tum Hi Ho", artists: "Arijit Singh", album: "Aashiqui 2" },
+      { name: "Agar Tum Saath Ho", artists: "Arijit Singh, Alka Yagnik", album: "Tamasha" },
+      { name: "Phir Le Aya Dil", artists: "Arijit Singh", album: "Barfi!" },
+      { name: "Kabira", artists: "Tochi Raina, Rekha Bhardwaj", album: "Yeh Jawaani Hai Deewani" },
+      { name: "Bekhayali", artists: "Sachet Tandon", album: "Kabir Singh" },
+      { name: "Humdard", artists: "Arijit Singh", album: "Ek Villain" },
+      { name: "Kalank Title Track", artists: "Arijit Singh", album: "Kalank" },
+    ],
+    telugu: [
+      { name: "Inkem Inkem Inkem Kaavaale", artists: "Sid Sriram", album: "Geetha Govindam" },
+      { name: "Samajavaragamana", artists: "Sid Sriram", album: "Ala Vaikunthapurramuloo" },
+      { name: "Yenti Yenti", artists: "Chinmayi, Yazin Nizar", album: "Geetha Govindam" },
+      { name: "Nuvvu Nenu Prema", artists: "Sid Sriram", album: "Nuvvu Nenu Prema" },
+      { name: "Adiga Adiga", artists: "Sid Sriram", album: "Ninnu Kori" },
+      { name: "Emai Poyave", artists: "Sid Sriram", album: "Padi Padi Leche Manasu" },
+      { name: "Hey Pillagaada", artists: "Anurag Kulkarni", album: "Fidaa" },
+      { name: "Vachindamma", artists: "Sid Sriram", album: "Geetha Govindam" },
+    ],
+  },
+  angry: {
+    english: [
+      { name: "Stronger", artists: "Kanye West", album: "Graduation" },
+      { name: "Eye of the Tiger", artists: "Survivor", album: "Eye of the Tiger" },
+      { name: "Lose Yourself", artists: "Eminem", album: "8 Mile" },
+      { name: "Believer", artists: "Imagine Dragons", album: "Evolve" },
+      { name: "Thunderstruck", artists: "AC/DC", album: "The Razors Edge" },
+      { name: "Till I Collapse", artists: "Eminem", album: "The Eminem Show" },
+      { name: "Numb", artists: "Linkin Park", album: "Meteora" },
+      { name: "In the End", artists: "Linkin Park", album: "Hybrid Theory" },
+    ],
+    hindi: [
+      { name: "Sultan Title Track", artists: "Sukhwinder Singh", album: "Sultan" },
+      { name: "Zinda", artists: "Siddharth Mahadevan", album: "Bhaag Milkha Bhaag" },
+      { name: "Brothers Anthem", artists: "Vishal Dadlani", album: "Brothers" },
+      { name: "Get Ready to Fight", artists: "Vishal Dadlani", album: "Baaghi" },
+      { name: "Malhari", artists: "Vishal Dadlani", album: "Bajirao Mastani" },
+      { name: "Jee Karda", artists: "Divya Kumar", album: "Badlapur" },
+      { name: "Apna Time Aayega", artists: "Ranveer Singh, DIVINE", album: "Gully Boy" },
+      { name: "Sher Aaya Sher", artists: "DIVINE", album: "Gully Boy" },
+    ],
+    telugu: [
+      { name: "Naatu Naatu", artists: "Rahul Sipligunj, Kaala Bhairava", album: "RRR" },
+      { name: "Komuram Bheemudo", artists: "Kaala Bhairava", album: "RRR" },
+      { name: "Dheevara", artists: "Ramya Behara, Deepu", album: "Baahubali" },
+      { name: "Saahore Baahubali", artists: "Daler Mehndi", album: "Baahubali 2" },
+      { name: "Jai Jai Shivshankar", artists: "Vishal Dadlani", album: "War" },
+      { name: "Srivalli", artists: "Sid Sriram", album: "Pushpa" },
+      { name: "Eega Title", artists: "M.M. Keeravani", album: "Eega" },
+      { name: "Bullet Song", artists: "Anurag Kulkarni", album: "Sarrainodu" },
+    ],
+  },
+  neutral: {
+    english: [
+      { name: "Weightless", artists: "Marconi Union", album: "Weightless" },
+      { name: "Sunset Lover", artists: "Petit Biscuit", album: "Petit Biscuit" },
+      { name: "Bloom", artists: "The Paper Kites", album: "Woodland" },
+      { name: "Holocene", artists: "Bon Iver", album: "Bon Iver" },
+      { name: "Banana Pancakes", artists: "Jack Johnson", album: "In Between Dreams" },
+      { name: "Better Together", artists: "Jack Johnson", album: "In Between Dreams" },
+      { name: "Riptide", artists: "Vance Joy", album: "Dream Your Life Away" },
+      { name: "Ho Hey", artists: "The Lumineers", album: "The Lumineers" },
+    ],
+    hindi: [
+      { name: "Ilahi", artists: "Arijit Singh", album: "Yeh Jawaani Hai Deewani" },
+      { name: "Phir Se Ud Chala", artists: "Mohit Chauhan", album: "Rockstar" },
+      { name: "Iktara", artists: "Kavita Seth", album: "Wake Up Sid" },
+      { name: "Tum Se Hi", artists: "Mohit Chauhan", album: "Jab We Met" },
+      { name: "Mast Magan", artists: "Arijit Singh", album: "2 States" },
+      { name: "Pee Loon", artists: "Mohit Chauhan", album: "Once Upon A Time In Mumbaai" },
+      { name: "Tera Ban Jaunga", artists: "Akhil Sachdeva, Tulsi Kumar", album: "Kabir Singh" },
+      { name: "Raabta", artists: "Arijit Singh", album: "Agent Vinod" },
+    ],
+    telugu: [
+      { name: "Choosi Chudangane", artists: "Sid Sriram", album: "Chalo" },
+      { name: "Vachinde", artists: "Madhu Priya, Ramky", album: "Fidaa" },
+      { name: "Hey Pillagaada", artists: "Anurag Kulkarni", album: "Fidaa" },
+      { name: "Nee Kannu Neeli Samudram", artists: "Javed Ali", album: "Uppena" },
+      { name: "Cinema Choopistha Mama", artists: "Karthik", album: "Race Gurram" },
+      { name: "Sirivennela", artists: "S.P. Balasubrahmanyam", album: "Sirivennela" },
+      { name: "Pranavalaya", artists: "Shreya Ghoshal", album: "Sahasam Swasaga Sagipo" },
+      { name: "Yedetthu Mallele", artists: "Sid Sriram", album: "Aakaasam Nee Haddhu Ra" },
+    ],
+  },
+};
+// Map other emotions to neutral fallback families
+const emotionFallbackKey: Record<string, string> = {
+  fear: "neutral",
+  surprise: "happy",
+  disgust: "happy",
+};
+
+function getFallbackTracks(emotion: string, language: string): FallbackTrack[] {
+  const key = fallbackLibrary[emotion] ? emotion : (emotionFallbackKey[emotion] || "happy");
+  const langKey = fallbackLibrary[key][language] ? language : "english";
+  return fallbackLibrary[key][langKey];
+}
+
 async function getSpotifyAccessToken(clientId: string, clientSecret: string): Promise<string> {
   const response = await fetch("https://accounts.spotify.com/api/token", {
     method: "POST",
